@@ -1,0 +1,89 @@
+#!/bin/bash
+#Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, and also released hereby as Public Domain
+
+cfg_mode="${1:-normal}"
+
+echo "Mode of this script: $cfg_mode"
+
+# prepare showargs, if it is here
+if [[ ! -x ./showargs ]]; then
+	if [[ ! -r ./showargs ]]; then
+		g++ showargs.cpp -o showargs
+	fi
+fi
+
+# faketime breaks $RAND in bash, so we provide this instead
+good_rand() {
+	local max=$1
+	local max_limit=$((4294967296-2)) # -2 to be safe. make sure it will fit in bash on 32bit, and also we read just 4 bytes entropy
+	if (( max >= max_limit )); then
+		echo "ERROR: max value ($max) exceeds near-limit 32bit ($max_limit)" >&2
+		exit 1
+	fi
+	((max+=1))
+	RND=$(od -An -N4 -tu4 < /dev/urandom | awk -v awkmax="$max"  '{print $1 % awkmax}') ;
+	echo $RND
+}
+
+echo "Cleanup of old run data"
+rm -rf ./witness_node_data_dir/
+
+#random port 1025 to below 2000
+r1=$(good_rand 970)
+port1=$((r1+1025))
+port2=$((port1+1))
+
+echo "port1=$port1 port2=$port2"
+
+# set -x
+#programs/witness_node/witness_node --rpc-endpoint=0.0.0.0:$port1 --p2p-endpoint=0.0.0.0:$port2 --witness-id="\"1.6.1\"" --private-key="[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"5JqNvafBnvKhD6wzifqQEa5YtPQr46VHdFdynXeMEiqX7my9gFF\"]" --enable-stale-production --genesis-json=$HOME/chain/test-genesis.json
+
+# load the secret from file:
+echo TODO ; exit ; ~/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret
+
+prog='programs/witness_node/witness_node'
+args=(
+"--rpc-endpoint=0.0.0.0:$port1"
+"--p2p-endpoint=0.0.0.0:$port2"
+'--witness-id="1.6.1"'
+'--private-key=["BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9", "XXX-SECRET-HERE"]'
+'--enable-stale-production'
+"--genesis-json=$HOME/chain/test-genesis-pay2e1.json"
+)
+#"--genesis-json=$HOME/chain/bitshares1-mod.json"
+
+
+echo "Arguments for program"
+printf '  %s\n' "${args[@]}"
+
+if [[ -x ./showargs ]]; then
+	echo "Arguments for program, as printed by a dummy program (each is quoted inside square-brackets)"
+	./showargs "${args[@]}"
+fi
+
+case "$cfg_mode" in
+    normal)
+	"$prog" "${args[@]}"
+        ;;
+    gdbm)
+	gdb -ex 'source mycatch.gdb'  --args "$prog" "${args[@]}"
+        ;;
+    gdbt)
+	gdb -ex 'catch throw'  --args "$prog" "${args[@]}"
+        ;;
+    gdb0)
+	gdb --args "$prog" "${args[@]}"
+        ;;
+    *)
+        echo "Unknown mode: $cfg_mode"
+        ;;
+esac
+
+#echo "old:"
+#set -x
+#programs/witness_node/witness_node --rpc-endpoint=0.0.0.0:$port1 --p2p-endpoint=0.0.0.0:$port2 --witness-id="\"1.6.1\"" --private-key="[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"5JqNvafBnvKhD6wzifqQEa5YtPQr46VHdFdynXeMEiqX7my9gFF\"]" --enable-stale-production --genesis-json=$HOME/chain/test-genesis.json
+#set +x
+
+#printf 'Arg[%d] = %s\n' "${!args[@]}" "${args[@]}"
+
+
