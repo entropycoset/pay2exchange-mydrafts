@@ -8,7 +8,7 @@ echo "Mode of this script: $cfg_mode"
 # prepare showargs, if it is here
 if [[ ! -x ./showargs ]]; then
 	if [[ ! -r ./showargs ]]; then
-		g++ showargs.cpp -o showargs
+		g++ showargs.cpp -o showargs || echo "Can not compile showargs"
 	fi
 fi
 
@@ -26,7 +26,7 @@ good_rand() {
 }
 
 echo "Cleanup of old run data"
-rm -rf ./witness_node_data_dir/
+rm -rf ./witness_node_data_dir/ || { echo "can not remove old data" ; exit 1 ; }
 
 #random port 1025 to below 2000
 r1=$(good_rand 970)
@@ -35,22 +35,32 @@ port2=$((port1+1))
 
 echo "port1=$port1 port2=$port2"
 
-# set -x
-#programs/witness_node/witness_node --rpc-endpoint=0.0.0.0:$port1 --p2p-endpoint=0.0.0.0:$port2 --witness-id="\"1.6.1\"" --private-key="[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"5JqNvafBnvKhD6wzifqQEa5YtPQr46VHdFdynXeMEiqX7my9gFF\"]" --enable-stale-production --genesis-json=$HOME/chain/test-genesis.json
-
 # load the secret from file:
-echo TODO ; exit ; ~/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret
+privkey1_secret=""
+privkey1_fullfn="$HOME/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret"
+
+if [ ! -r "${privkey1_fullfn}" ]; then
+	echo "Can not read secret file (${privkey1_fullfn}) so we can not start as witness. Aborting." ; exit 1 
+else
+	read -r firstline < "${privkey1_fullfn}"
+	if [[ ! $firstline =~ ^[[:alnum:]]+$ ]]; then
+		echo "The data read does not look correct. Aborting." ; exit 1
+	else
+		privkey1_secret="${firstline}"
+		echo "Read secret key."
+	fi
+fi
 
 prog='programs/witness_node/witness_node'
 args=(
 "--rpc-endpoint=0.0.0.0:$port1"
 "--p2p-endpoint=0.0.0.0:$port2"
 '--witness-id="1.6.1"'
-'--private-key=["BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9", "XXX-SECRET-HERE"]'
+"--private-key=[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"$privkey1_secret\"]"
 '--enable-stale-production'
-"--genesis-json=$HOME/chain/test-genesis-pay2e1.json"
+"--genesis-json=$HOME/chain-p2e/test-genesis-pay2e1.json"
 )
-#"--genesis-json=$HOME/chain/bitshares1-mod.json"
+#"--genesis-json=$HOME/chain-p2e/bitshares1-mod.json"
 
 
 echo "Arguments for program"
