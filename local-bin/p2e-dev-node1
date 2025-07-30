@@ -58,7 +58,7 @@ args=(
 '--witness-id="1.6.1"'
 "--private-key=[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"$privkey1_secret\"]"
 '--enable-stale-production'
-"--genesis-json=$HOME/chain-p2e/test-genesis-pay2e1.json"
+"--genesis-json=$HOME/chain-p2e/test-genesis-p2e1.json"
 )
 #"--genesis-json=$HOME/chain-p2e/bitshares1-mod.json"
 
