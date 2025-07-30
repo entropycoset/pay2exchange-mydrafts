@@ -1,0 +1,16 @@
+#!/bin/bash
+
+localbin="$HOME/.local/bin/"
+echo "Installing to $localbin"
+
+mkdir -p ~/.local/bin/
+
+prog="p2e-dev-node1"
+if [ -r "${localbin}/${prog}" ]
+then
+	echo "${prog} - already installed "
+else
+	echo "${prog}- installing"
+	ln -s "${PWD}/${prog}" 	"${localbin}/" || echo "Failed to link"
+fi
+

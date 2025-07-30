@@ -1,0 +1,14 @@
+#!/bin/bash
+
+targetdir_json="$HOME/chain-p2e/"
+echo "Installing to $targetdir_json"
+
+mkdir -p "$targetdir_json"
+
+for datafile_short in *.json
+do
+	target_fullfile="${targetdir_json}/${datafile_short}"
+	datafile_fullfile="${PWD}/$datafile_short"
+	echo "Copy (symlink) into ${target_fullfile}... "
+	ln -s "${datafile_fullfile}" "${target_fullfile}"  ||  echo "Copy (symlink) failed"
+done
