@@ -1,0 +1,24 @@
+#!/bin/bash
+
+
+
+secretdir="$HOME/.devel/SECRET/pay2exchange/"
+
+echo "secretdir ${secretdir}"
+mkdir -p "$secretdir" || echo "can not create dir for secrets"
+chmod o-rX "$secretdir" || echo "can not chmod"
+pubkey="BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9"
+echo "if you have the secret key for the pubkey=$pybkey then please enter it now, otherwise ctrl-C to abort"
+
+read -p "secret key (will not be echoed)> " -s secret ; echo
+secret_len=${#secret}
+if (( secret_len < 50 || secret_len > 60 )); then
+	echo "Variable length out of range (len is ${secret_len}). Aborting."
+  exit 1
+fi
+
+target_fullfn="${secretdir}/${pubkey}.secret"
+
+echo "$secret" > "${target_fullfn}" || echo "failed to write file"
+echo "saved into ${target_fullfn}"
+
