@@ -1,0 +1,457 @@
+{
+    "immutable_parameters": {
+        "min_committee_member_count": 11,
+        "min_witness_count": 1,
+        "num_special_accounts": 100,
+        "num_special_assets": 100
+    },
+    "initial_accounts": [
+        {
+            "active_key": "BTS5PMzJauXxrFQxaaUtgSq8knVV5r2JvWbZS4hrLwTKjDcFeyRBr",
+            "is_lifetime_member": true,
+            "name": "wit01",
+            "owner_key": "BTS8FeSBrg1Yxy5v1JEqJyUcNGDSXNRJLNQFRfHAGavxW1QonzSxf"
+        },
+        {
+            "active_key": "BTS5ke8ggA7kEgexq4n9Eq6hGSECPymSJZsRrXNyHBcZJKu44uGYD",
+            "is_lifetime_member": true,
+            "name": "wit02",
+            "owner_key": "BTS6DTBmvgjKQRk8bkxxZB22bTnf4jKnXTBvMCTv6cqvLuC4y3xgm"
+        },
+        {
+            "active_key": "BTS6e79JXFrTzjTZVN1yrouxy4Yc3GBaFU9eLmv2YVtLEv89QZog3",
+            "is_lifetime_member": true,
+            "name": "wit03",
+            "owner_key": "BTS8enLaYh6AyPSpfHMtxH6tgSm1pUGREieDp9Ukpbticam2mgauX"
+        },
+        {
+            "active_key": "BTS4wyP8UMt9vRNFA3iqMYjgfNxm4116TzVroLebnmpy1brYXnKdn",
+            "is_lifetime_member": true,
+            "name": "wit04",
+            "owner_key": "BTS67Lu8mvteM2QYoairVpYHrVczE2xNZdG5f1qzFhEoXf8rKAPiV"
+        },
+        {
+            "active_key": "BTS5bNoQJSXgrrBUoUW4S4vcS2ZvwFW6YKd2Ppzn28YofHUKWQXYs",
+            "is_lifetime_member": true,
+            "name": "wit05",
+            "owner_key": "BTS6se1qEU2iLKLrsESeDqYNny11hTY3JMEWyxCVYNXyyc3UuGP8V"
+        },
+        {
+            "active_key": "BTS751xMa9hgUNr4zy1UbA6E2xiLM5qMvP5R2d2GdhcfsEXy5Giji",
+            "is_lifetime_member": true,
+            "name": "wit06",
+            "owner_key": "BTS8gZK1RHiLUtUGyF4HPmVWBbz2AjB4ytxR7LT76CnMfifczeeTo"
+        },
+        {
+            "active_key": "BTS6P985SqyCRCtiFWLpyQZgXPxTBroMrqSWQib9UxhaDXSCKbFjn",
+            "is_lifetime_member": true,
+            "name": "wit07",
+            "owner_key": "BTS8BtaHMXsM41kqCViz1zwESMTBFBHkfJsJxuQDDd6muf1PhzZJB"
+        },
+        {
+            "active_key": "BTS4tnuMHMRDbY8omeyJNYfhEUcfzSjrSYavmhMPDAGVLbHDrXYLQ",
+            "is_lifetime_member": true,
+            "name": "wit08",
+            "owner_key": "BTS6BaYmy1fRJ4kMxjofEbew9mrF9i7RW4eKw3SAfcNc5uic298BW"
+        },
+        {
+            "active_key": "BTS57qxTVBNjQiq9V41nSJjtJ7qW1PA53ZBxaVUoWDWupqpCnXCdY",
+            "is_lifetime_member": true,
+            "name": "wit09",
+            "owner_key": "BTS4yQf4rh4aMJu7f1nesqY5tgvkXdGgmFa9EBtEBXcx8dXKN3qAR"
+        },
+        {
+            "active_key": "BTS79DLGUpKdHNigWSp1TRxg2DW5LoAS6YbSYZBE3fYMQocaDhmNM",
+            "is_lifetime_member": true,
+            "name": "wit10",
+            "owner_key": "BTS6jG5aSPrfY9YNE96pLurxuR5obJBbcHRtAQvEoWAHQ5z6PC3Eb"
+        },
+        {
+            "active_key": "BTS6fSsSaEpv6BTEiLEFMqo9XXna5ouFbVhrFKSHFNFWxVBcuaTa5",
+            "is_lifetime_member": true,
+            "name": "wit11",
+            "owner_key": "BTS7BC6NjkWE6RzJBxrmpG7QDrHLCA9Y8jReYeczqDM6KY9PfLFHd"
+        }
+    ],
+    "initial_active_witnesses": 1,
+    "initial_assets": [],
+    "initial_balances": [
+        {
+            "owner": "BTSFAbAx7yuxt725qSZvfwWqkdCwp9ZnUama",
+            "asset_symbol": "BTS",
+            "amount": "100000000000000"
+        }
+    ],
+    "initial_committee_candidates": [
+        {
+            "owner_name": "wit01"
+        },
+        {
+            "owner_name": "wit02"
+        },
+        {
+            "owner_name": "wit03"
+        },
+        {
+            "owner_name": "wit04"
+        },
+        {
+            "owner_name": "wit05"
+        },
+        {
+            "owner_name": "wit06"
+        },
+        {
+            "owner_name": "wit07"
+        },
+        {
+            "owner_name": "wit08"
+        },
+        {
+            "owner_name": "wit09"
+        },
+        {
+            "owner_name": "wit10"
+        },
+        {
+            "owner_name": "wit11"
+        }
+    ],
+    "initial_parameters": {
+        "account_fee_scale_bitshifts": 4,
+        "accounts_per_fee_scale": 1000,
+        "allow_non_member_whitelists": false,
+        "block_interval": 3,
+        "cashback_vesting_period_seconds": 7776000,
+        "cashback_vesting_threshold": 10000000,
+        "committee_proposal_review_period": 3600,
+        "count_non_member_votes": true,
+        "current_fees": {
+            "parameters": [
+                [
+                    0,
+                    {
+                        "fee": 2000000,
+                        "price_per_kbyte": 1000000
+                    }
+                ],
+                [
+                    1,
+                    {
+                        "fee": 500000
+                    }
+                ],
+                [
+                    2,
+                    {
+                        "fee": 0
+                    }
+                ],
+                [
+                    3,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    4,
+                    {}
+                ],
+                [
+                    5,
+                    {
+                        "basic_fee": 500000,
+                        "premium_fee": 200000000,
+                        "price_per_kbyte": 100000
+                    }
+                ],
+                [
+                    6,
+                    {
+                        "fee": 2000000,
+                        "price_per_kbyte": 100000
+                    }
+                ],
+                [
+                    7,
+                    {
+                        "fee": 300000
+                    }
+                ],
+                [
+                    8,
+                    {
+                        "membership_annual_fee": 200000000,
+                        "membership_lifetime_fee": 1000000000
+                    }
+                ],
+                [
+                    9,
+                    {
+                        "fee": 50000000
+                    }
+                ],
+                [
+                    10,
+                    {
+                        "long_symbol": 500000000,
+                        "price_per_kbyte": 10,
+                        "symbol3": "50000000000",
+                        "symbol4": "30000000000"
+                    }
+                ],
+                [
+                    11,
+                    {
+                        "fee": 50000000,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    12,
+                    {
+                        "fee": 50000000
+                    }
+                ],
+                [
+                    13,
+                    {
+                        "fee": 50000000
+                    }
+                ],
+                [
+                    14,
+                    {
+                        "fee": 2000000,
+                        "price_per_kbyte": 100000
+                    }
+                ],
+                [
+                    15,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    16,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    17,
+                    {
+                        "fee": 10000000
+                    }
+                ],
+                [
+                    18,
+                    {
+                        "fee": 50000000
+                    }
+                ],
+                [
+                    19,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    20,
+                    {
+                        "fee": 500000000
+                    }
+                ],
+                [
+                    21,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    22,
+                    {
+                        "fee": 2000000,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    23,
+                    {
+                        "fee": 100000,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    24,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    25,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    26,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    27,
+                    {
+                        "fee": 0,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    28,
+                    {
+                        "fee": 500000000
+                    }
+                ],
+                [
+                    29,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    30,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    31,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    32,
+                    {
+                        "fee": 500000000
+                    }
+                ],
+                [
+                    33,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    34,
+                    {
+                        "fee": 100000
+                    }
+                ],
+                [
+                    35,
+                    {
+                        "fee": 100000,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    36,
+                    {
+                        "fee": 2000000
+                    }
+                ],
+                [
+                    37,
+                    {}
+                ],
+                [
+                    38,
+                    {
+                        "fee": 500000,
+                        "price_per_kbyte": 10
+                    }
+                ],
+                [
+                    39,
+                    {
+                        "fee": 500000,
+                        "price_per_output": 500000
+                    }
+                ]
+            ],
+            "scale": 10000
+        },
+        "extensions": [],
+        "fee_liquidation_threshold": 10000000,
+        "lifetime_referrer_percent_of_fee": 3000,
+        "maintenance_interval": 3600,
+        "maintenance_skip_slots": 3,
+        "max_authority_depth": 2,
+        "max_predicate_opcode": 1,
+        "maximum_asset_feed_publishers": 10,
+        "maximum_asset_whitelist_authorities": 10,
+        "maximum_authority_membership": 10,
+        "maximum_block_size": 2097152,
+        "maximum_committee_count": 1001,
+        "maximum_proposal_lifetime": 2419200,
+        "maximum_time_until_expiration": 86400,
+        "maximum_transaction_size": 98304,
+        "maximum_witness_count": 1001,
+        "network_percent_of_fee": 2000,
+        "reserve_percent_of_fee": 2000,
+        "witness_pay_per_block": 150000,
+        "worker_budget_per_day": "50000000000"
+    },
+    "initial_timestamp": "2025-07-30T21:00:00",
+    "initial_vesting_balances": [],
+    "initial_witness_candidates": [
+        {
+            "block_signing_key": "BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9",
+            "owner_name": "wit01"
+        },
+        {
+            "block_signing_key": "BTS75bqiXhrer1FQfnXaSAYKEerapnrUKGqcBSaP6ZEzky9DbNp3H",
+            "owner_name": "wit02"
+        },
+        {
+            "block_signing_key": "BTS8aPVNL2Rc54tNNtf1B9dXYay4FsQGbSLuUcVY5h9YXEizcH6N8",
+            "owner_name": "wit03"
+        },
+        {
+            "block_signing_key": "BTS6nRjuDgNqvbuPi3Dqm2FLA4Ezrr2REsJZQXnkAD4jtpzYGW93V",
+            "owner_name": "wit04"
+        },
+        {
+            "block_signing_key": "BTS7v3Sx16xoqC6rWCq59rHLA9tA5sQf2Q2Rrb2X7rtAvbVDnXVcT",
+            "owner_name": "wit05"
+        },
+        {
+            "block_signing_key": "BTS8mRD4g4Mw6yWbXXyFgaD6FwwYD69PVcG324vuAY4VxcLvG6FBC",
+            "owner_name": "wit06"
+        },
+        {
+            "block_signing_key": "BTS6YZx9cngaPfXjgGdxNiU3R7EwSDBzkY18aq9NJkz7b4QUGeLhq",
+            "owner_name": "wit07"
+        },
+        {
+            "block_signing_key": "BTS6ko5M46sL59XMH23KtQkVcKmyYHPyWydXYEkoxT1z5tajWv2cv",
+            "owner_name": "wit08"
+        },
+        {
+            "block_signing_key": "BTS5XN6yu4gMP8QWPsfGBa41qBMtjWcydoV3YFbccTj2vdjvjhedz",
+            "owner_name": "wit09"
+        },
+        {
+            "block_signing_key": "BTS5CuwsW5V9cehazP63eKxe7aJSEq2Bf9LXwxmYBCjo8ncGjn9JX",
+            "owner_name": "wit10"
+        },
+        {
+            "block_signing_key": "BTS8VttVfzDvxopaqteW4dArrEQRtvjrCMLus1Fm4EUSCby5gPyjK",
+            "owner_name": "wit11"
+        }
+    ],
+    "initial_worker_candidates": [],
+    "max_core_supply": "100000000000000"
+}
