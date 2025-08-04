@@ -85,7 +85,7 @@ case "$cfg_mode" in
 	gdb --args "$prog" "${args[@]}"
         ;;
     gdbx)
-	gdb -ex 'set can-use-hw-watchpoints  0'   -ex 'break _xxx_point1'   --args "$prog" "${args[@]}"
+	gdb -ex 'set can-use-hw-watchpoints  0'  -ex 'source devel/gdb/poolwatch.gdb'   -ex 'break _xxx_point1'   --args "$prog" "${args[@]}"
         ;;
     *)
         echo "Unknown mode: $cfg_mode"
