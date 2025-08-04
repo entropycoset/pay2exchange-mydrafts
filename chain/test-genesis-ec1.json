@@ -7,77 +7,17 @@
     },
     "initial_accounts": [
         {
-            "active_key": "BTS5PMzJauXxrFQxaaUtgSq8knVV5r2JvWbZS4hrLwTKjDcFeyRBr",
+            "active_key": "BTS5u8xYyBSBY6PfZ8NX9PVdf5Y1xJJNy6iy4EwmotgR2feZfdPtf",
             "is_lifetime_member": true,
             "name": "wit01",
-            "owner_key": "BTS8FeSBrg1Yxy5v1JEqJyUcNGDSXNRJLNQFRfHAGavxW1QonzSxf"
-        },
-        {
-            "active_key": "BTS5ke8ggA7kEgexq4n9Eq6hGSECPymSJZsRrXNyHBcZJKu44uGYD",
-            "is_lifetime_member": true,
-            "name": "wit02",
-            "owner_key": "BTS6DTBmvgjKQRk8bkxxZB22bTnf4jKnXTBvMCTv6cqvLuC4y3xgm"
-        },
-        {
-            "active_key": "BTS6e79JXFrTzjTZVN1yrouxy4Yc3GBaFU9eLmv2YVtLEv89QZog3",
-            "is_lifetime_member": true,
-            "name": "wit03",
-            "owner_key": "BTS8enLaYh6AyPSpfHMtxH6tgSm1pUGREieDp9Ukpbticam2mgauX"
-        },
-        {
-            "active_key": "BTS4wyP8UMt9vRNFA3iqMYjgfNxm4116TzVroLebnmpy1brYXnKdn",
-            "is_lifetime_member": true,
-            "name": "wit04",
-            "owner_key": "BTS67Lu8mvteM2QYoairVpYHrVczE2xNZdG5f1qzFhEoXf8rKAPiV"
-        },
-        {
-            "active_key": "BTS5bNoQJSXgrrBUoUW4S4vcS2ZvwFW6YKd2Ppzn28YofHUKWQXYs",
-            "is_lifetime_member": true,
-            "name": "wit05",
-            "owner_key": "BTS6se1qEU2iLKLrsESeDqYNny11hTY3JMEWyxCVYNXyyc3UuGP8V"
-        },
-        {
-            "active_key": "BTS751xMa9hgUNr4zy1UbA6E2xiLM5qMvP5R2d2GdhcfsEXy5Giji",
-            "is_lifetime_member": true,
-            "name": "wit06",
-            "owner_key": "BTS8gZK1RHiLUtUGyF4HPmVWBbz2AjB4ytxR7LT76CnMfifczeeTo"
-        },
-        {
-            "active_key": "BTS6P985SqyCRCtiFWLpyQZgXPxTBroMrqSWQib9UxhaDXSCKbFjn",
-            "is_lifetime_member": true,
-            "name": "wit07",
-            "owner_key": "BTS8BtaHMXsM41kqCViz1zwESMTBFBHkfJsJxuQDDd6muf1PhzZJB"
-        },
-        {
-            "active_key": "BTS4tnuMHMRDbY8omeyJNYfhEUcfzSjrSYavmhMPDAGVLbHDrXYLQ",
-            "is_lifetime_member": true,
-            "name": "wit08",
-            "owner_key": "BTS6BaYmy1fRJ4kMxjofEbew9mrF9i7RW4eKw3SAfcNc5uic298BW"
-        },
-        {
-            "active_key": "BTS57qxTVBNjQiq9V41nSJjtJ7qW1PA53ZBxaVUoWDWupqpCnXCdY",
-            "is_lifetime_member": true,
-            "name": "wit09",
-            "owner_key": "BTS4yQf4rh4aMJu7f1nesqY5tgvkXdGgmFa9EBtEBXcx8dXKN3qAR"
-        },
-        {
-            "active_key": "BTS79DLGUpKdHNigWSp1TRxg2DW5LoAS6YbSYZBE3fYMQocaDhmNM",
-            "is_lifetime_member": true,
-            "name": "wit10",
-            "owner_key": "BTS6jG5aSPrfY9YNE96pLurxuR5obJBbcHRtAQvEoWAHQ5z6PC3Eb"
-        },
-        {
-            "active_key": "BTS6fSsSaEpv6BTEiLEFMqo9XXna5ouFbVhrFKSHFNFWxVBcuaTa5",
-            "is_lifetime_member": true,
-            "name": "wit11",
-            "owner_key": "BTS7BC6NjkWE6RzJBxrmpG7QDrHLCA9Y8jReYeczqDM6KY9PfLFHd"
+            "owner_key":"BTS5hU8hDSZp15iwtqMn6PQseVwS2BJaLgVdJWk548nj95dHn7Vtt"
         }
     ],
     "initial_active_witnesses": 1,
     "initial_assets": [],
     "initial_balances": [
         {
-            "owner": "BTSFAbAx7yuxt725qSZvfwWqkdCwp9ZnUama",
+            "owner": "BTSNGzawF79nwfBajb2z3XdZ1x7GAc4pJsKE",
             "asset_symbol": "BTS",
             "amount": "100000000000000"
         }
@@ -91,7 +31,7 @@
         "account_fee_scale_bitshifts": 4,
         "accounts_per_fee_scale": 1000,
         "allow_non_member_whitelists": false,
-        "block_interval": 5,
+        "block_interval": 3,
         "cashback_vesting_period_seconds": 7776000,
         "cashback_vesting_threshold": 10000000,
         "committee_proposal_review_period": 3600,
@@ -374,11 +314,12 @@
         "witness_pay_per_block": 150000,
         "worker_budget_per_day": "50000000"
     },
-    "initial_timestamp": "2025-08-04T18:50:00",
+    "initial_timestamp": "2025-08-04T19:11:00",
     "initial_vesting_balances": [],
     "initial_witness_candidates": [
         {
-            "block_signing_key": "BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9",
+            "block_signing_key":
+"BTS5u8xYyBSBY6PfZ8NX9PVdf5Y1xJJNy6iy4EwmotgR2feZfdPtf",
             "owner_name": "wit01"
         }
     ],
