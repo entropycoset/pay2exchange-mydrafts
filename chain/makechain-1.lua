@@ -1,7 +1,7 @@
-#!/usr/bin/env lua
+--!/usr/bin/env lua
 
 local json = require("dkjson")
-local lib_tablesort=require("lib_tablesort")
+local lib_tablesort = require("lib_tablesort")
 
 -- Check for file existence
 local function file_exists(path)
@@ -12,24 +12,26 @@ end
 
 -- Run external command and return stdout
 local function run_cmd(cmd)
-  io.stderr:write("Running cmd: " .. cmd)				
+  io.stderr:write("Running cmd: " .. cmd .. "\n")
   local f = assert(io.popen(cmd, 'r'))
   local output = f:read('*a')
   f:close()
-  io.stderr:write("Cmd output read: " .. output)
+  io.stderr:write("Cmd output read: " .. output .. "\n")
   return output
+end
+
+-- Function to get current time + offset in ISO format
+local function get_genesis_timestamp(offset_seconds)
+  local current_time = os.time()
+  local genesis_time = current_time + offset_seconds
+  return os.date("!%Y-%m-%dT%H:%M:%S", genesis_time)
 end
 
 -- Help message
 local function show_help()
-  print([[
-Usage:
-  lua script.lua dev_key_path seed num_witnesses -g input.json > output.json
+  print([[Usage:
+  lua script.lua dev_key_path seed num_witnesses -g input.json timestamp_offset_seconds > output.json
   lua script.lua dev_key_path seed num_witnesses -r input.json > output.json
-
-Options:
-  -g    Generate JSON blocks (initial_accounts, initial_committee_candidates, etc.)
-  -r    Replace placeholders in input JSON with generated keys
 ]])
   os.exit(1)
 end
@@ -40,8 +42,14 @@ local seed = arg[2]
 local num = tonumber(arg[3])
 local mode = arg[4]
 local input_file = arg[5]
+local timestamp_offset = mode == "-g" and tonumber(arg[6]) or nil
 
 if not (dev_key_path and seed and num and mode and input_file) then
+  show_help()
+end
+
+if mode == "-g" and not timestamp_offset then
+  io.stderr:write("Error: timestamp_offset_seconds required for -g mode\n")
   show_help()
 end
 
@@ -68,12 +76,12 @@ for i = 1, num do
   local active_output = run_cmd(dev_key_path .. " " .. seed .. " " .. active_label)
   local owner_output = run_cmd(dev_key_path .. " " .. seed .. " " .. owner_label)
 
-  local active_pub = active_output:match("\"public_key\":\"%s*(BTS[%w]+)\"")																											
-  local active_priv = active_output:match("\"private_key\":\"%s*(5[%w]+)\"")
+  local active_pub = active_output:match('"public_key":"%s*(BTS[%w]+)"')
+  local active_priv = active_output:match('"private_key":"%s*(5[%w]+)"')
 
-  local owner_pub = owner_output:match("\"public_key\":\"%s*(BTS[%w]+)\"")
-  local owner_priv = owner_output:match("\"private_key\":\"%s*(5[%w]+)\"")
-  local owner_addr = owner_output:match("\"address\":\"%s*(BTS[%w]+)\"")
+  local owner_pub = owner_output:match('"public_key":"%s*(BTS[%w]+)"')
+  local owner_priv = owner_output:match('"private_key":"%s*(5[%w]+)"')
+  local owner_addr = owner_output:match('"address":"%s*(BTS[%w]+)"')
 
   if not (active_pub and active_priv and owner_pub and owner_priv and owner_addr) then
     io.stderr:write("Error parsing keys for " .. wit .. "\n")
@@ -99,14 +107,16 @@ if mode == "-r" then
     input_data = input_data:gsub(wit .. "_active_address", data.active_pub)
     input_data = input_data:gsub(wit .. "_signing_key", data.owner_pub)
   end
-
   io.write(input_data)
 
--- Generate sections (mode -g)
 elseif mode == "-g" then
   local genesis = json.decode(input_data)
+  local genesis_private = json.decode(input_data)
+  
+  -- Set the genesis timestamp
+  genesis.initial_timestamp = get_genesis_timestamp(timestamp_offset)
+  genesis_private.initial_timestamp = get_genesis_timestamp(timestamp_offset)
 
-  -- Generate accounts
   local accounts = {}
   local balances = {}
   local committee = {}
@@ -116,63 +126,89 @@ elseif mode == "-g" then
     table.insert(accounts, {
       name = wit,
       owner_key = data.owner_pub,
+      owner_key_full = {
+        public_key = data.owner_pub,
+        wif_priv_key = data.owner_priv
+      },
       active_key = data.active_pub,
+      active_key_full = {
+        public_key = data.active_pub,
+        wif_priv_key = data.active_priv
+      },
       is_lifetime_member = true
     })
 
     table.insert(balances, {
       owner = data.owner_addr,
-      asset_id = "1.3.0", -- the native (core) token
-      amount = 100000  -- 1000.00 assuming 5 decimals
+      asset_id = "1.3.0",
+      amount = 100000
     })
 
-    table.insert(committee, {
-      owner_name = wit
-    })
+    table.insert(committee, { owner_name = wit })
 
     table.insert(witnesses, {
       owner_name = wit,
-      block_signing_key = data.owner_pub
+      block_signing_key = data.owner_pub,
+      block_signing_key_full = {
+        public_key = data.owner_pub,
+        wif_priv_key = data.owner_priv
+      }
     })
   end
 
-  genesis.initial_accounts = accounts
+  -- Fill
+  genesis.initial_accounts = {}
+  genesis.initial_balances = {}
+  genesis.initial_committee_candidates = {}
+  genesis.initial_witness_candidates = {}
+  genesis_private.initial_accounts = accounts
+  genesis_private.initial_balances = balances
+  genesis_private.initial_committee_candidates = committee
+  genesis_private.initial_witness_candidates = witnesses
+
+  -- Sorting
+  local function sort_by_name(a, b)
+    return tonumber(a.name:match("%d+")) < tonumber(b.name:match("%d+"))
+  end
+
+  local function sort_by_owner_name(a, b)
+    return tonumber(a.owner_name:match("%d+")) < tonumber(b.owner_name:match("%d+"))
+  end
+
+  table.sort(accounts, sort_by_name)
+  table.sort(balances, function(a, b) return a.owner < b.owner end)
+  table.sort(committee, sort_by_owner_name)
+  table.sort(witnesses, sort_by_owner_name)
+
+  genesis.initial_accounts = {}
+  genesis.initial_balances = {}
+  genesis.initial_committee_candidates = {}
+  genesis.initial_witness_candidates = {}
+
+  for _, v in ipairs(accounts) do
+    local vcopy = {}
+    for k, val in pairs(v) do
+      if not k:match("_full$") then vcopy[k] = val end
+    end
+    table.insert(genesis.initial_accounts, vcopy)
+  end
+
+  for _, v in ipairs(witnesses) do
+    local vcopy = {}
+    for k, val in pairs(v) do
+      if not k:match("_full$") then vcopy[k] = val end
+    end
+    table.insert(genesis.initial_witness_candidates, vcopy)
+  end
+
   genesis.initial_balances = balances
   genesis.initial_committee_candidates = committee
-  genesis.initial_witness_candidates = witnesses
 
--- sort
-
--- Sort initial_accounts by name (e.g., wit01, wit02...)
-table.sort(genesis.initial_accounts, function(a, b)
-  local na = tonumber(a.name:match("%d+"))
-  local nb = tonumber(b.name:match("%d+"))
-  return na < nb
-end)
-
--- Sort initial_balances by owner address (alphabetically)
-table.sort(genesis.initial_balances, function(a, b)
-  return a.owner < b.owner
-end)
-
--- Sort initial_committee_candidates by owner_name (e.g., wit01, wit02...)
-table.sort(genesis.initial_committee_candidates, function(a, b)
-  local na = tonumber(a.owner_name:match("%d+"))
-  local nb = tonumber(b.owner_name:match("%d+"))
-  return na < nb
-end)
-
--- Sort initial_witness_candidates by owner_name (e.g., wit01, wit02...)
-table.sort(genesis.initial_witness_candidates, function(a, b)
-  local na = tonumber(a.owner_name:match("%d+"))
-  local nb = tonumber(b.owner_name:match("%d+"))
-  return na < nb
-end)
-  
-local final_json = lib_tablesort.encode_sorted(genesis)																					
-print(final_json)
-
---  io.write(json.encode(genesis, { indent = true }))
+  -- Output both files
+  print(lib_tablesort.encode_sorted(genesis))
+  local priv_file = assert(io.open("private.json", "w"))
+  priv_file:write(lib_tablesort.encode_sorted(genesis_private))
+  priv_file:close()
 
 else
   show_help()
