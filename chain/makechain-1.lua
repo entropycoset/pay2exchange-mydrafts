@@ -1,8 +1,9 @@
 #!/usr/bin/env lua
 
 local json = require("dkjson")
+local lib_tablesort=require("lib_tablesort")
 
--- Check for file existence (no lfs needed)
+-- Check for file existence
 local function file_exists(path)
   local f = io.open(path, "r")
   if f then f:close() return true end
@@ -11,9 +12,11 @@ end
 
 -- Run external command and return stdout
 local function run_cmd(cmd)
+  print("Running cmd: " .. cmd)				
   local f = assert(io.popen(cmd, 'r'))
   local output = f:read('*a')
   f:close()
+  print("Cmd output read: " .. output)
   return output
 end
 
@@ -62,15 +65,15 @@ for i = 1, num do
   local active_label = string.format("%s-%s-active", seed, wit)
   local owner_label = string.format("%s-%s-owner", seed, wit)
 
-  local active_output = run_cmd(dev_key_path .. " " .. active_label)
-  local owner_output = run_cmd(dev_key_path .. " " .. owner_label)
+  local active_output = run_cmd(dev_key_path .. " " .. seed .. " " .. active_label)
+  local owner_output = run_cmd(dev_key_path .. " " .. seed .. " " .. owner_label)
 
-  local active_pub = active_output:match("\"public_key\":\"%s*(5[%w]+)\"")
+  local active_pub = active_output:match("\"public_key\":\"%s*(BTS[%w]+)\"")																											
   local active_priv = active_output:match("\"private_key\":\"%s*(5[%w]+)\"")
 
-  local owner_pub = owner_output:match("\"public_key\":\"%s*(5[%w]+)\"")
+  local owner_pub = owner_output:match("\"public_key\":\"%s*(BTS[%w]+)\"")
   local owner_priv = owner_output:match("\"private_key\":\"%s*(5[%w]+)\"")
-  local owner_addr = owner_output:match("\"address\":\"%s*([%w]+)\"")
+  local owner_addr = owner_output:match("\"address\":\"%s*(BTS[%w]+)\"")
 
   if not (active_pub and active_priv and owner_pub and owner_priv and owner_addr) then
     io.stderr:write("Error parsing keys for " .. wit .. "\n")
@@ -119,7 +122,7 @@ elseif mode == "-g" then
 
     table.insert(balances, {
       owner = data.owner_addr,
-      asset_id = "1.3.0",
+      asset_id = "1.3.0", -- the native (core) token
       amount = 100000  -- 1000.00 assuming 5 decimals
     })
 
@@ -138,7 +141,45 @@ elseif mode == "-g" then
   genesis.initial_committee_candidates = committee
   genesis.initial_witness_candidates = witnesses
 
-  io.write(json.encode(genesis, { indent = true }))
+-- sort
+
+-- Sort initial_accounts by name (e.g., wit01, wit02...)
+table.sort(genesis.initial_accounts, function(a, b)
+  local na = tonumber(a.name:match("%d+"))
+  local nb = tonumber(b.name:match("%d+"))
+  return na < nb
+end)
+
+-- Sort initial_balances by owner address (alphabetically)
+table.sort(genesis.initial_balances, function(a, b)
+  return a.owner < b.owner
+end)
+
+-- Sort initial_committee_candidates by owner_name (e.g., wit01, wit02...)
+table.sort(genesis.initial_committee_candidates, function(a, b)
+  local na = tonumber(a.owner_name:match("%d+"))
+  local nb = tonumber(b.owner_name:match("%d+"))
+  return na < nb
+end)
+
+-- Sort initial_witness_candidates by owner_name (e.g., wit01, wit02...)
+table.sort(genesis.initial_witness_candidates, function(a, b)
+  local na = tonumber(a.owner_name:match("%d+"))
+  local nb = tonumber(b.owner_name:match("%d+"))
+  return na < nb
+end)
+
+  
+-- Encode once
+local raw_json = json.encode(genesis, { indent = true })
+-- Decode to reorder fields (canonical order)
+local parsed = json.decode(raw_json)
+-- Re-encode to canonical format
+local canonical_json = json.encode(parsed, { indent = true })
+	-- Output the final canonicalized JSON
+print(canonical_json)
+
+--  io.write(json.encode(genesis, { indent = true }))
 
 else
   show_help()
