@@ -1,5 +1,7 @@
 local json = require("dkjson")
 
+local M = {}  -- this is the table we will return
+
 -- Recursively sort all object keys in the table
 local function sort_keys(t)
   if type(t) ~= "table" then return t end
@@ -34,9 +36,11 @@ local function sort_keys(t)
   end
 end
 
--- Wrapper for sorted encoding
-local function encode_sorted(t)
+-- Public function
+function M.encode_sorted(t)
   local sorted = sort_keys(t)
   return json.encode(sorted, { indent = true })
 end
+
+return M
 

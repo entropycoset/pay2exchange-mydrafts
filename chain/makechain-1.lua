@@ -12,11 +12,11 @@ end
 
 -- Run external command and return stdout
 local function run_cmd(cmd)
-  print("Running cmd: " .. cmd)				
+  io.stderr:write("Running cmd: " .. cmd)				
   local f = assert(io.popen(cmd, 'r'))
   local output = f:read('*a')
   f:close()
-  print("Cmd output read: " .. output)
+  io.stderr:write("Cmd output read: " .. output)
   return output
 end
 
@@ -168,16 +168,9 @@ table.sort(genesis.initial_witness_candidates, function(a, b)
   local nb = tonumber(b.owner_name:match("%d+"))
   return na < nb
 end)
-
   
--- Encode once
-local raw_json = json.encode(genesis, { indent = true })
--- Decode to reorder fields (canonical order)
-local parsed = json.decode(raw_json)
--- Re-encode to canonical format
-local canonical_json = json.encode(parsed, { indent = true })
-	-- Output the final canonicalized JSON
-print(canonical_json)
+local final_json = lib_tablesort.encode_sorted(genesis)																					
+print(final_json)
 
 --  io.write(json.encode(genesis, { indent = true }))
 
