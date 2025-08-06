@@ -3,9 +3,29 @@
 local json = require("dkjson")
 local lib_tablesort = require("lib_tablesort")
 
+-- Expand tilde (~) in file paths to home directory
+local function expand_path(path)
+  if path:sub(1, 1) == "~" then
+    local home = os.getenv("HOME")
+    if not home then
+      io.stderr:write("Error: HOME environment variable not set\n")
+      os.exit(1)
+    end
+    if path:sub(1, 2) == "~/" then
+      return home .. path:sub(2)
+    elseif path == "~" then
+      return home
+    else
+      return path  -- ~username format not supported
+    end
+  end
+  return path
+end
+
 -- Check for file existence
 local function file_exists(path)
-  local f = io.open(path, "r")
+  local expanded_path = expand_path(path)
+  local f = io.open(expanded_path, "r")
   if f then f:close() return true end
   return false
 end
@@ -30,21 +50,23 @@ end
 -- Help message
 local function show_help()
   print([[Usage:
-  lua script.lua dev_key_path seed num_witnesses -g input.json timestamp_offset_seconds > output.json
-  lua script.lua dev_key_path seed num_witnesses -r input.json > output.json
+  lua script.lua dev_key_path seed_file num_witnesses -g input.json timestamp_offset_seconds > output.json
+  lua script.lua dev_key_path seed_file num_witnesses -r input.json > output.json
+
+  seed_file: Path to a file containing the seed text (10-40 characters) on one line
 ]])
   os.exit(1)
 end
 
 -- Args
 local dev_key_path = arg[1]
-local seed = arg[2]
+local seed_file = arg[2]
 local num = tonumber(arg[3])
 local mode = arg[4]
 local input_file = arg[5]
 local timestamp_offset = mode == "-g" and tonumber(arg[6]) or nil
 
-if not (dev_key_path and seed and num and mode and input_file) then
+if not (dev_key_path and seed_file and num and mode and input_file) then
   show_help()
 end
 
@@ -55,6 +77,35 @@ end
 
 if not file_exists(dev_key_path) then
   io.stderr:write("Error: dev_get_key not found at " .. dev_key_path .. "\n")
+  os.exit(1)
+end
+
+-- Read and validate seed from file
+local expanded_seed_file = expand_path(seed_file)
+
+if not file_exists(seed_file) then
+  io.stderr:write("Error: Seed file not found at " .. seed_file .. "\n")
+  os.exit(1)
+end
+
+local seed_file_handle = io.open(expanded_seed_file, "r")
+if not seed_file_handle then
+  io.stderr:write("Error: Cannot read seed file " .. seed_file .. "\n")
+  os.exit(1)
+end
+
+local seed = seed_file_handle:read("*line")
+seed_file_handle:close()
+
+if not seed then
+  io.stderr:write("Error: Seed file " .. seed_file .. " is empty or unreadable\n")
+  os.exit(1)
+end
+
+-- Validate seed length (10-40 characters)
+local seed_length = string.len(seed)
+if seed_length < 10 or seed_length > 40 then
+  io.stderr:write("Error: Seed text length is " .. seed_length .. " characters. Must be between 10 and 40 characters\n")
   os.exit(1)
 end
 
