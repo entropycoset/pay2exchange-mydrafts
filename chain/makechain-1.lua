@@ -194,7 +194,7 @@ elseif mode == "-g" then
 
     table.insert(balances, {
       owner = data.owner_addr,
-      asset_id = "1.3.0",
+      asset_name = "BTS",
       amount = 100000
     })
 
