@@ -2,8 +2,9 @@
 #Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, and also released hereby as Public Domain
 
 cfg_mode="${1:-normal}"
+cfg_chain="${2:-default}"
 
-echo "Mode of this script: $cfg_mode"
+echo "Mode of this script: $cfg_mode ; Blockchain/genesis: $cfg_chain"
 
 # prepare showargs, if it is here
 if [[ ! -x ./showargs ]]; then
@@ -51,6 +52,26 @@ else
 	fi
 fi
 
+genesis="$HOME/chain-p2e/test-genesis-p2e1.json"
+case "$cfg_chain" in
+    default)
+			:
+		;;
+		p2e1)
+			genesis="$HOME/chain-p2e/test-genesis-p2e1.json"
+		;;
+		ec1)
+			genesis="$HOME/chain-p2e/test-genesis-ec1.json"
+		;;
+		bit)
+			genesis="$HOME/chain-p2e/bitshares1-mod.json"
+		;;
+    *)
+		echo "Unknown chain: $cfg_chain"
+    ;;
+esac
+echo "Genesis: $genesis"
+
 prog='programs/witness_node/witness_node'
 args=(
 "--rpc-endpoint=0.0.0.0:$port1"
@@ -58,7 +79,7 @@ args=(
 '--witness-id="1.6.1"'
 "--private-key=[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"$privkey1_secret\"]"
 '--enable-stale-production'
-"--genesis-json=$HOME/chain-p2e/test-genesis-ec1.json"
+"--genesis-json=${genesis}"
 )
 #"--genesis-json=$HOME/chain-p2e/bitshares1-mod.json"
 
@@ -71,8 +92,9 @@ if [[ -x ./showargs ]]; then
 	./showargs "${args[@]}"
 fi
 
+
 case "$cfg_mode" in
-    normal)
+    n|normal)
 	"$prog" "${args[@]}"
         ;;
     gdbm)
