@@ -73,6 +73,7 @@ end
 local function encode_table(val, indent, level)
   local mt = getmetatable(val)
   local is_arr = is_array(val)
+  print( "array? " .. tostring(is_arr) .. "\n" )
   local jsontype = mt and mt.__jsontype
 
   local tokens = {}
