@@ -9,5 +9,5 @@ input_file:close()
 local lua_obj, pos, err = json.decode(input_data, 1, nil)
 if err then error("Error decoding JSON: " .. err) end
 
-local final_json = lib_tablesort.encode_sorted(lua_obj)
+local final_json = lib_tablesort.encode_sorted(lua_obj, "  ")
 print(final_json)
