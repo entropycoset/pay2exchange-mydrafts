@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e  # Exit on any error
 
-chain_seeds_dir="$HOME/.devel/SECRET/pay2exchange/chain/make-ec2/"
+cfg_sub="$1"
+
+chain_seeds_dir="$HOME/.devel/SECRET/pay2exchange/chain/make-ec2${cfg_sub}/"
 chain_seeds_fn="$chain_seeds_dir/seed.txt"
 
 makeseed() {
