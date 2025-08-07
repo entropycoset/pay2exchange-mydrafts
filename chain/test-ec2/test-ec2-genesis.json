@@ -1,52 +1,52 @@
 {
-  "initial_timestamp":"2025-08-06T18:53:40",
+  "initial_timestamp":"2025-08-07T17:56:00",
   "initial_balances":[{
-      "asset_id":"1.3.0",
-      "owner":"BTS3W9PknE7pVRBzUkvVUiW9qHVzLCeDfhhZ",
+      "owner":"BTS5uTL2vUhKT8bhS4BsnLEaVf6mPcSoGa3o",
+      "asset_symbol":"BTS",
       "amount":100000
     },{
-      "asset_id":"1.3.0",
-      "owner":"BTS8kwCHyrvXEduZ3EAb9E2K5zU6RHjNjWXF",
+      "owner":"BTSEetDmMeKC6Q4B82JEfTtw68JCbgQCd7nB",
+      "asset_symbol":"BTS",
       "amount":100000
     },{
-      "asset_id":"1.3.0",
-      "owner":"BTSJufPXQTXJ1Lm4ZLvrrfzD1KpXSiUbDRCQ",
+      "owner":"BTSL1ztbkFmjA3nz8T1uW1u2Z8UWY7yofZaj",
+      "asset_symbol":"BTS",
       "amount":100000
     },{
-      "asset_id":"1.3.0",
-      "owner":"BTSMkzu56sBfJcSrUPDLYD5nVAaBFYusKU3Q",
+      "owner":"BTSM9HrcgnPiYGacwZFYEg3ar58tkmSkpWqA",
+      "asset_symbol":"BTS",
       "amount":100000
     },{
-      "asset_id":"1.3.0",
-      "owner":"BTSPFJb2TUC7298QP2KD7yq8dCbCXzayVzH5",
+      "owner":"BTSPcjVGkCpF8DHkzXNV3D3YJAwx5N59HApo",
+      "asset_symbol":"BTS",
       "amount":100000
     }],
   "max_core_supply":"1000000000000",
   "initial_accounts":[{
+      "active_key":"BTS7oViQdGnUqez4EiDAYidCwDxAt7ES2Tmd8uqQs3MTLPyV4rSBp",
       "is_lifetime_member":true,
-      "active_key":"BTS6Qz8McjDLaCD6SbQa76kXFTFzWHa7HzgYoetVNVAXukrpman1o",
       "name":"wit01",
-      "owner_key":"BTS7TWR4umyrMM8FbaTh9ao3S3dzsFuMDywTgqLjru8JxzcNRePnJ"
+      "owner_key":"BTS66b8UMB5rbMPGkGyS3sfj7do8ZcGrRkC4W2hs2o1DE4EHvWa7L"
     },{
+      "active_key":"BTS551H2QnxmYfhKW4rLpPRjuQrP69QkCxTbSfVpH2y9Rr1KX3K3e",
       "is_lifetime_member":true,
-      "active_key":"BTS87WMFpjbYggAszXKJMMDPDo3iCXjXKdFyTYtkkCJqMNcZPr2Jo",
       "name":"wit02",
-      "owner_key":"BTS87evREG5wT5AiQrzrzkp6CdGgu7pF5sUMDqijrS1jatYxBSSRa"
+      "owner_key":"BTS6z6xTaFk75qsXFgVZUvLaQYhgFg2JsM16Ab6Mg66Fmns9ZiDAW"
     },{
+      "active_key":"BTS57eNTmMBGQJ1HXWdA537cwGgin9tYBXqytSBu52CyVw4Kf3Fnq",
       "is_lifetime_member":true,
-      "active_key":"BTS65VtdcZNtPTXpQ2CSusM5X1NDKETC39AhkPjVDo6WZo2M1G4A6",
       "name":"wit03",
-      "owner_key":"BTS5kW19DXyU2NuALzfsxUAqQ3qQXuAPj6ohKnHquhvNBjq1g5gLs"
+      "owner_key":"BTS6PsZ8JZmix4eSzDD7VAXwEmNyNdN8CkH3K8aH7M7NEdMhweUtw"
     },{
+      "active_key":"BTS8f874VUE138WxSgRm1QPj77UZN7JawiyXsSRF9QGbNYnBgRGfB",
       "is_lifetime_member":true,
-      "active_key":"BTS63Jtkw9qEhqf1kDQXEFdyYj9yBbd9EEUvNJ5SihZQXmVyYSaqV",
       "name":"wit04",
-      "owner_key":"BTS7UEUtvnfxchcYNgE2UTQMj6u7wV8akFpui3GTA93zq4hzYb5V9"
+      "owner_key":"BTS72SKkiBnBjYwhoLxpJN9sZ9do32qHUcwyxm8DUrBuR3akRvbmY"
     },{
+      "active_key":"BTS6kgXjavFy2E1MhMK6SBkVC9FY8VfLAHxEBAsRuHDzcrzNMs9M8",
       "is_lifetime_member":true,
-      "active_key":"BTS5uWiXjFMbiTdbe23cWcVdztKdTCc4cRn9HimG7Xjtp6sLXV67E",
       "name":"wit05",
-      "owner_key":"BTS7CWPa6RaSzd6W8kEJvzaKyTWw6KxUEpSh3DhmFbxpe1gvJYoKx"
+      "owner_key":"BTS6NECWhyAzNhg9JSYiTJSYjp6cfyvSjEH5wS1vQKoEYxZtPwqER"
     }],
   "initial_parameters":{
     "maximum_committee_count":1001,
@@ -61,7 +61,7 @@
             "fee":0
           }],[3,{
             "fee":2000000
-          }],[4,[]],[5,{
+          }],[4,{}],[5,{
             "premium_fee":200000000,
             "basic_fee":500000,
             "price_per_kbyte":100000
@@ -76,8 +76,8 @@
           }],[9,{
             "fee":50000000
           }],[10,{
-            "symbol4":"30000000000",
             "long_symbol":500000000,
+            "symbol4":"30000000000",
             "price_per_kbyte":10,
             "symbol3":"50000000000"
           }],[11,{
@@ -138,7 +138,7 @@
             "price_per_kbyte":10
           }],[36,{
             "fee":2000000
-          }],[37,[]],[38,{
+          }],[37,{}],[38,{
             "fee":500000,
             "price_per_kbyte":10
           }],[39,{
@@ -147,50 +147,50 @@
           }]]
     },
     "maximum_asset_feed_publishers":10,
-    "worker_budget_per_day":"50000000",
+    "cashback_vesting_threshold":10000000,
     "maximum_time_until_expiration":86400,
     "cashback_vesting_period_seconds":7776000,
-    "reserve_percent_of_fee":2000,
+    "fee_liquidation_threshold":10000000,
     "lifetime_referrer_percent_of_fee":3000,
     "maintenance_skip_slots":3,
     "maintenance_interval":3600,
     "maximum_block_size":2097152,
     "witness_pay_per_block":150000,
     "account_fee_scale_bitshifts":4,
-    "network_percent_of_fee":2000,
+    "max_authority_depth":2,
     "maximum_authority_membership":10,
     "accounts_per_fee_scale":1000,
+    "max_predicate_opcode":1,
     "maximum_asset_whitelist_authorities":10,
-    "allow_non_member_whitelists":false,
     "committee_proposal_review_period":3600,
     "extensions":[],
-    "maximum_transaction_size":98304,
-    "maximum_proposal_lifetime":2419200,
-    "block_interval":3,
-    "count_non_member_votes":true,
     "maximum_witness_count":1001,
-    "max_predicate_opcode":1,
-    "max_authority_depth":2,
-    "fee_liquidation_threshold":10000000,
-    "cashback_vesting_threshold":10000000
+    "block_interval":3,
+    "reserve_percent_of_fee":2000,
+    "count_non_member_votes":true,
+    "network_percent_of_fee":2000,
+    "maximum_proposal_lifetime":2419200,
+    "maximum_transaction_size":98304,
+    "allow_non_member_whitelists":false,
+    "worker_budget_per_day":"50000000"
   },
   "initial_worker_candidates":[],
   "initial_active_witnesses":1,
   "initial_assets":[],
   "initial_witness_candidates":[{
-      "block_signing_key":"BTS7TWR4umyrMM8FbaTh9ao3S3dzsFuMDywTgqLjru8JxzcNRePnJ",
+      "block_signing_key":"BTS66b8UMB5rbMPGkGyS3sfj7do8ZcGrRkC4W2hs2o1DE4EHvWa7L",
       "owner_name":"wit01"
     },{
-      "block_signing_key":"BTS87evREG5wT5AiQrzrzkp6CdGgu7pF5sUMDqijrS1jatYxBSSRa",
+      "block_signing_key":"BTS6z6xTaFk75qsXFgVZUvLaQYhgFg2JsM16Ab6Mg66Fmns9ZiDAW",
       "owner_name":"wit02"
     },{
-      "block_signing_key":"BTS5kW19DXyU2NuALzfsxUAqQ3qQXuAPj6ohKnHquhvNBjq1g5gLs",
+      "block_signing_key":"BTS6PsZ8JZmix4eSzDD7VAXwEmNyNdN8CkH3K8aH7M7NEdMhweUtw",
       "owner_name":"wit03"
     },{
-      "block_signing_key":"BTS7UEUtvnfxchcYNgE2UTQMj6u7wV8akFpui3GTA93zq4hzYb5V9",
+      "block_signing_key":"BTS72SKkiBnBjYwhoLxpJN9sZ9do32qHUcwyxm8DUrBuR3akRvbmY",
       "owner_name":"wit04"
     },{
-      "block_signing_key":"BTS7CWPa6RaSzd6W8kEJvzaKyTWw6KxUEpSh3DhmFbxpe1gvJYoKx",
+      "block_signing_key":"BTS6NECWhyAzNhg9JSYiTJSYjp6cfyvSjEH5wS1vQKoEYxZtPwqER",
       "owner_name":"wit05"
     }],
   "initial_committee_candidates":[{
@@ -206,9 +206,9 @@
     }],
   "initial_vesting_balances":[],
   "immutable_parameters":{
-    "num_special_assets":100,
+    "num_special_accounts":100,
     "min_committee_member_count":1,
     "min_witness_count":1,
-    "num_special_accounts":100
+    "num_special_assets":100
   }
 }
