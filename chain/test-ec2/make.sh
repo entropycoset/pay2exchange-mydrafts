@@ -23,7 +23,7 @@ else
 	echo "the secret seed to generate keys does exist now ($chain_seeds_dir)"
 	echo "override it? type 'over' to override it, or type 'k' like 'keep' to keep current one."
 
-	read -p "Enter your reply: " reply
+	read -e -i 'k' -p "k(eep) or over(ride) > " reply
 	if [ "$reply" = "over" ]; then
 		echo "will OVERRIDE..."
 		sleep 1

@@ -6,6 +6,12 @@ cfg_chain="${2:-default}"
 
 echo "Mode of this script: $cfg_mode ; Blockchain/genesis: $cfg_chain"
 
+if [[ "$cfg_mode" == "x" ]] ; then # special mode to just edit this script itself
+	vim "$(readlink -f "$0")"
+	echo "After eiditing myself - exit"
+	exit
+fi
+
 # prepare showargs, if it is here
 if [[ ! -x ./showargs ]]; then
 	if [[ ! -r ./showargs ]]; then
@@ -94,6 +100,7 @@ fi
 
 
 case "$cfg_mode" in
+	# also, special mode "x" is handled on top of this script
     n|normal)
 	"$prog" "${args[@]}"
         ;;

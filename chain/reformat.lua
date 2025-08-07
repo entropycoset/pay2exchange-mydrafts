@@ -1,3 +1,4 @@
+package.path = package.path .. ";./?.lua;../?.lua"
 local json = require("dkjson")
 local lib_tablesort=require("lib_tablesort")
 

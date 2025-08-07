@@ -2,47 +2,8 @@ local json = require("dkjson")
 
 local M = {}
 
--- Table to track array/object nature of empty containers
-local container_types = {}
-
--- Parse JSON string to identify positions and types of empty containers
-local function identify_empty_container_types(json_str)
-  container_types = {} -- Reset
-  local containers = {}
-  local pos = 1
-  local container_count = 0
-  
-  -- Find all empty containers and their types
-  while pos <= #json_str do
-    local empty_array_start = json_str:find("%[%s*%]", pos)
-    local empty_object_start = json_str:find("%{%s*%}", pos)
-    
-    local next_pos = nil
-    local container_type = nil
-    
-    if empty_array_start and (not empty_object_start or empty_array_start < empty_object_start) then
-      container_count = container_count + 1
-      containers[container_count] = "array"
-      next_pos = empty_array_start + json_str:match("%[%s*%]", empty_array_start):len()
-    elseif empty_object_start then
-      container_count = container_count + 1
-      containers[container_count] = "object"
-      next_pos = empty_object_start + json_str:match("%{%s*%}", empty_object_start):len()
-    else
-      break
-    end
-    
-    pos = next_pos
-  end
-  
-  return containers
-end
-
--- Counter for empty containers encountered during traversal
-local empty_container_index = 0
-
--- Recursively sort all object keys in the table while preserving array/object distinction
-local function sort_keys(t, empty_container_map)
+-- Recursively sort keys while preserving array/object types from original structure
+local function sort_keys_with_structure(t, original, path)
   if type(t) ~= "table" then return t end
 
   -- Count elements and determine table structure
@@ -61,18 +22,51 @@ local function sort_keys(t, empty_container_map)
 
   -- Handle empty tables
   if count == 0 then
-    empty_container_index = empty_container_index + 1
-    local container_type = empty_container_map and empty_container_map[empty_container_index]
-    
-    if container_type == "array" then
-      -- Return empty array
-      local result = {}
-      setmetatable(result, {__jsontype = 'array'})
-      return result
-    else
-      -- Return empty object (default)
-      return {}
+    -- Check original structure to determine if this should be array or object
+    local original_value = original
+    if path ~= "" then
+      -- Navigate to the corresponding location in original structure
+      for part in path:gmatch("[^%.]+") do
+        if original_value and type(original_value) == "table" then
+          original_value = original_value[part]
+        else
+          original_value = nil
+          break
+        end
+      end
     end
+    
+    if original_value and type(original_value) == "table" then
+      -- Check if original was an array by looking for numeric keys
+      local original_is_array = false
+      local original_count = 0
+      for k, _ in pairs(original_value) do
+        original_count = original_count + 1
+        if type(k) == "number" then
+          original_is_array = true
+        else
+          original_is_array = false
+          break
+        end
+      end
+      
+      if original_count == 0 then
+        -- Empty in original - check metatable or use dkjson array detection
+        local mt = getmetatable(original_value)
+        if mt and mt.__jsontype == 'array' then
+          original_is_array = true
+        end
+      end
+      
+      if original_is_array then
+        local result = {}
+        setmetatable(result, {__jsontype = 'array'})
+        return result
+      end
+    end
+    
+    -- Default to empty object
+    return {}
   end
 
   -- Determine if this should be treated as an array
@@ -92,7 +86,8 @@ local function sort_keys(t, empty_container_map)
     local result = {}
     setmetatable(result, {__jsontype = 'array'}) -- Mark as array
     for i = 1, max_numeric_key do
-      result[i] = sort_keys(t[i], empty_container_map)
+      local new_path = path == "" and tostring(i) or path .. "." .. tostring(i)
+      result[i] = sort_keys_with_structure(t[i], original, new_path)
     end
     return setmetatable(result, { __array = true })  -- Marks this as array for dkjson
   else
@@ -104,7 +99,8 @@ local function sort_keys(t, empty_container_map)
 
     local result = {}
     for _, k in ipairs(keys) do
-      result[k] = sort_keys(t[k], empty_container_map)
+      local new_path = path == "" and tostring(k) or path .. "." .. tostring(k)
+      result[k] = sort_keys_with_structure(t[k], original, new_path)
     end
 
     -- Force this to be recognized as object (even if empty)
@@ -148,18 +144,17 @@ end
 
 -- Public function that preserves array/object distinction
 function M.encode_sorted(t, original_json)
-  local empty_container_map = nil
+  local original_structure = nil
   
-  -- If we have original JSON string, identify empty container types
+  -- If we have original JSON string, decode it to get the original structure
   if original_json and type(original_json) == "string" then
-    -- Only identify empty container types from original JSON
-    -- DO NOT overwrite the input table t with decoded original JSON!
-    empty_container_map = identify_empty_container_types(original_json)
+    local decoded_original, pos, err = json.decode(original_json)
+    if decoded_original and not err then
+      original_structure = decoded_original
+    end
   end
   
-  -- Reset counter for this traversal
-  empty_container_index = 0
-  local sorted = sort_keys(t, empty_container_map)
+  local sorted = sort_keys_with_structure(t, original_structure, "")
   
   -- Mark empty objects with special marker
   local marked = mark_empty_objects_for_encoding(sorted)
@@ -175,8 +170,7 @@ end
 
 -- Simpler version for when we don't have original JSON
 function M.encode_sorted_simple(t)
-  empty_container_index = 0
-  local sorted = sort_keys(t, nil)
+  local sorted = sort_keys_with_structure(t, nil, "")
   return json.encode(sorted, { indent = true })
 end
 

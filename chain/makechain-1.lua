@@ -47,8 +47,18 @@ end
 -- Function to get current time + offset in ISO format
 local function get_genesis_timestamp(offset_seconds)
   local current_time = os.time()
-  local genesis_time = current_time + offset_seconds
-  return os.date("!%Y-%m-%dT%H:%M:%S", genesis_time)
+  local genesis_time_base = current_time + offset_seconds
+  io.stderr:write("Current time: " .. current_time .. "\n")
+  io.stderr:write("Genesis time (base): " .. genesis_time_base .. "\n")
+  local ival = 5 -- default blocks interval
+  local genesis_time = genesis_time_base
+  if (genesis_time % ival ~= 0) then
+    genesis_time = genesis_time + (ival - (genesis_time % ival))
+  end
+  io.stderr:write("Genesis time (rounded): " .. genesis_time .. "\n")
+  local timestamp = os.date("!%Y-%m-%dT%H:%M:%S", genesis_time)
+  io.stderr:write("Genesis time as timestamp: " .. timestamp .. "\n")
+  return timestamp
 end
 
 -- Help message
@@ -172,8 +182,9 @@ elseif mode == "-g" then
   local genesis_private = json.decode(input_data)
   
   -- Set the genesis timestamp
-  genesis.initial_timestamp = get_genesis_timestamp(timestamp_offset)
-  genesis_private.initial_timestamp = get_genesis_timestamp(timestamp_offset)
+  local timestamp = get_genesis_timestamp(timestamp_offset)
+  genesis.initial_timestamp = timestamp
+  genesis_private.initial_timestamp = timestamp
 
   local accounts = {}
   local balances = {}
@@ -200,7 +211,7 @@ elseif mode == "-g" then
 
     table.insert(balances, {
       owner = data.owner_addr,
-      asset_name = "BTS",
+      asset_symbol = "BTS",
       amount = 100000
     })
 
