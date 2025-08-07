@@ -7,8 +7,8 @@
     }],
   "max_core_supply":"1000000000000",
   "initial_accounts":[{
-      "is_lifetime_member":true,
       "active_key":"BTS5u8xYyBSBY6PfZ8NX9PVdf5Y1xJJNy6iy4EwmotgR2feZfdPtf",
+      "is_lifetime_member":true,
       "name":"wit01",
       "owner_key":"BTS5hU8hDSZp15iwtqMn6PQseVwS2BJaLgVdJWk548nj95dHn7Vtt"
     }],
@@ -25,7 +25,7 @@
             "fee":0
           }],[3,{
             "fee":2000000
-          }],[4,[]],[5,{
+          }],[4,{}],[5,{
             "premium_fee":200000000,
             "basic_fee":500000,
             "price_per_kbyte":100000
@@ -40,8 +40,8 @@
           }],[9,{
             "fee":50000000
           }],[10,{
-            "symbol4":"30000000000",
             "long_symbol":500000000,
+            "symbol4":"30000000000",
             "price_per_kbyte":10,
             "symbol3":"50000000000"
           }],[11,{
@@ -102,7 +102,7 @@
             "price_per_kbyte":10
           }],[36,{
             "fee":2000000
-          }],[37,[]],[38,{
+          }],[37,{}],[38,{
             "fee":500000,
             "price_per_kbyte":10
           }],[39,{
@@ -111,32 +111,32 @@
           }]]
     },
     "maximum_asset_feed_publishers":10,
-    "worker_budget_per_day":"50000000",
+    "cashback_vesting_threshold":10000000,
     "maximum_time_until_expiration":86400,
     "cashback_vesting_period_seconds":7776000,
-    "reserve_percent_of_fee":2000,
+    "fee_liquidation_threshold":10000000,
     "lifetime_referrer_percent_of_fee":3000,
     "maintenance_skip_slots":3,
     "maintenance_interval":3600,
     "maximum_block_size":2097152,
     "witness_pay_per_block":150000,
     "account_fee_scale_bitshifts":4,
-    "network_percent_of_fee":2000,
+    "max_authority_depth":2,
     "maximum_authority_membership":10,
     "accounts_per_fee_scale":1000,
+    "max_predicate_opcode":1,
     "maximum_asset_whitelist_authorities":10,
-    "allow_non_member_whitelists":false,
     "committee_proposal_review_period":3600,
     "extensions":[],
-    "maximum_transaction_size":98304,
-    "maximum_proposal_lifetime":2419200,
-    "block_interval":3,
-    "count_non_member_votes":true,
     "maximum_witness_count":1001,
-    "max_predicate_opcode":1,
-    "max_authority_depth":2,
-    "fee_liquidation_threshold":10000000,
-    "cashback_vesting_threshold":10000000
+    "block_interval":3,
+    "reserve_percent_of_fee":2000,
+    "count_non_member_votes":true,
+    "network_percent_of_fee":2000,
+    "maximum_proposal_lifetime":2419200,
+    "maximum_transaction_size":98304,
+    "allow_non_member_whitelists":false,
+    "worker_budget_per_day":"50000000"
   },
   "initial_worker_candidates":[],
   "initial_active_witnesses":1,
@@ -150,9 +150,9 @@
     }],
   "initial_vesting_balances":[],
   "immutable_parameters":{
-    "num_special_assets":100,
+    "num_special_accounts":100,
     "min_committee_member_count":1,
     "min_witness_count":1,
-    "num_special_accounts":100
+    "num_special_assets":100
   }
 }
