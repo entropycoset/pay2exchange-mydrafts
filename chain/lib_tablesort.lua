@@ -152,13 +152,8 @@ function M.encode_sorted(t, original_json)
   
   -- If we have original JSON string, identify empty container types
   if original_json and type(original_json) == "string" then
-    -- First decode normally
-    local decoded_obj, pos, err = json.decode(original_json)
-    if decoded_obj and not err then
-      t = decoded_obj
-    end
-    
-    -- Then identify empty container types from original JSON
+    -- Only identify empty container types from original JSON
+    -- DO NOT overwrite the input table t with decoded original JSON!
     empty_container_map = identify_empty_container_types(original_json)
   end
   

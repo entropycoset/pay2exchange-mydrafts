@@ -216,6 +216,12 @@ elseif mode == "-g" then
     })
   end
 
+  -- Debug: Print witness count
+  io.stderr:write("Total witnesses generated: " .. #witnesses .. "\n")
+  io.stderr:write("Total accounts generated: " .. #accounts .. "\n")
+  io.stderr:write("Total balances generated: " .. #balances .. "\n")
+  io.stderr:write("Total committee generated: " .. #committee .. "\n")
+
   -- Fill
   genesis.initial_accounts = {}
   genesis.initial_balances = {}
@@ -261,8 +267,13 @@ elseif mode == "-g" then
     table.insert(genesis.initial_witness_candidates, vcopy)
   end
 
-  genesis.initial_balances = balances
-  genesis.initial_committee_candidates = committee
+  for _, v in ipairs(balances) do
+    table.insert(genesis.initial_balances, v)
+  end
+
+  for _, v in ipairs(committee) do
+    table.insert(genesis.initial_committee_candidates, v)
+  end
 
   -- Output both files with original JSON for array/object preservation
   print(lib_tablesort.encode_sorted(genesis, input_data))
