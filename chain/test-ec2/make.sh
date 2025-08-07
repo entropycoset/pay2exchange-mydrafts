@@ -26,7 +26,7 @@ else
 	read -p "Enter your reply: " reply
 	if [ "$reply" = "over" ]; then
 		echo "will OVERRIDE..."
-		sleep 2
+		sleep 1
 		makeseed "$chain_seeds_fn"
 	elif [ "$reply" = "k" ]; then
 		echo "keep old one."
@@ -52,8 +52,11 @@ if [ ! -f "./input2.json" ]; then
 	exit 1
 fi
 
+read -e -i "5" -p "how many witnesses? (odd number)> " opt_wit
+read -e -i "60" -p "how many SECONDS delay? (you should start up all witnesses before this many seconds from now)> " opt_delay
+
 echo "Running lua script to generate genesis..."
-if ! lua ../makechain-1.lua ../../../pay2exchange-core/programs/genesis_util/get_dev_key ~/.devel/SECRET/pay2exchange/chain/make-ec2/seed.txt 5 -g ./input2.json 60 > out.json; then
+if ! lua ../makechain-1.lua ../../../pay2exchange-core/programs/genesis_util/get_dev_key ~/.devel/SECRET/pay2exchange/chain/make-ec2/seed.txt $opt_wit -g ./input2.json $opt_delay  > out.json; then
 	echo "Error: Failed to generate genesis file" >&2
 	exit 1
 fi
