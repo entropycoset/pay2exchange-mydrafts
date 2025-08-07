@@ -258,10 +258,10 @@ elseif mode == "-g" then
   genesis.initial_balances = balances
   genesis.initial_committee_candidates = committee
 
-  -- Output both files
-  print(lib_tablesort.encode_sorted(genesis))
+  -- Output both files with original JSON for array/object preservation
+  print(lib_tablesort.encode_sorted(genesis, input_data))
   local priv_file = assert(io.open("private.json", "w"))
-  priv_file:write(lib_tablesort.encode_sorted(genesis_private))
+  priv_file:write(lib_tablesort.encode_sorted(genesis_private, input_data))
   priv_file:close()
 
 else
