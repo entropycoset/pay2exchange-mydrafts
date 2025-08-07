@@ -35,11 +35,12 @@ end
 
 -- Run external command and return stdout
 local function run_cmd(cmd)
-  io.stderr:write("Running cmd: " .. cmd .. "\n")
+io.stderr:write("Running cmd... \n")
+  -- (avoid this to not leak the seed onto screen) -- io.stderr:write("Running cmd: " .. cmd .. "\n")
   local f = assert(io.popen(cmd, 'r'))
   local output = f:read('*a')
   f:close()
-  io.stderr:write("Cmd output read: " .. output .. "\n")
+  -- (avoid this, to not leak secret key onto screen) -- io.stderr:write("Cmd output read: " .. output .. "\n")
   return output
 end
 
@@ -68,6 +69,8 @@ local num = tonumber(arg[3])
 local mode = arg[4]
 local input_file = arg[5]
 local timestamp_offset = mode == "-g" and tonumber(arg[6]) or nil
+
+io.stderr:write("Number of witnesses: " .. num .. "\n")
 
 if not (dev_key_path and seed_file and num and mode and input_file) then
   show_help()
@@ -124,6 +127,7 @@ local priv_csv = {}
 -- Generate keys
 for i = 1, num do
   local wit = string.format("wit%02d", i)
+  io.stderr:write("Generate for witness id: " .. wit .. "\n")
   local active_label = string.format("%s-%s-active", seed, wit)
   local owner_label = string.format("%s-%s-owner", seed, wit)
 
@@ -177,6 +181,8 @@ elseif mode == "-g" then
   local witnesses = {}
 
   for wit, data in pairs(witness_data) do
+    io.stderr:write("Generating JSON table for wit=" .. wit .. "\n")
+
     table.insert(accounts, {
       name = wit,
       owner_key = data.owner_pub,
