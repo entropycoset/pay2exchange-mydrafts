@@ -3,7 +3,7 @@
 --
 -- Copyright (c) 2020 rxi
 -- Copyright (c) 2025 EntropyCoset
---
+--	
 -- Permission is hereby granted, free of charge, to any person obtaining a copy of
 -- this software and associated documentation files (the "Software"), to deal in
 -- the Software without restriction, including without limitation the rights to
@@ -32,65 +32,60 @@
 
 local json = { _version = "0.1.3" }
 
-------------------------------------------------------------------------
--- Encode
-------------------------------------------------------------------------
-
-local escape_char_map = {
-  [ "\\" ] = "\\\\",
-  [ "\"" ] = "\\\"",
-  [ "\b" ] = "\\b",
-  [ "\f" ] = "\\f",
-  [ "\n" ] = "\\n",
-  [ "\r" ] = "\\r",
-  [ "\t" ] = "\\t",
-}
-local escape_char_map_inv = { ["\\/"] = "/" }
-for k, v in pairs(escape_char_map) do
-  escape_char_map_inv[v] = k
+local encode -- forward declaration
+	
+-- Determine whether a table is a JSON array (sequence)
+local function is_array(t)
+  if getmetatable(t) and getmetatable(t).__jsontype == "array" then
+    return true
+  end
+  local max = 0
+  local count = 0
+  for k, v in pairs(t) do
+    if type(k) ~= "number" then return false end
+    if k > max then max = k end
+    count = count + 1
+  end
+  return max == count and count > 0
 end
+
+-- Escape characters for strings
+local escape_char_map = {
+  ["\\"] = "\\\\",
+  ["\""] = "\\\"",
+  ["\b"] = "\\b",
+  ["\f"] = "\\f",
+  ["\n"] = "\\n",
+  ["\r"] = "\\r",
+  ["\t"] = "\\t"
+}
 
 local function escape_char(c)
   return escape_char_map[c] or string.format("\\u%04x", c:byte())
 end
 
+-- Encode strings
 local function encode_string(s)
   return '"' .. s:gsub('[%z\1-\31\\"]', escape_char) .. '"'
 end
 
-local function is_array(t)
-  if type(t) ~= "table" then return false end
-  local max = 0
-  local count = 0
-  for k, _ in pairs(t) do
-    if type(k) ~= "number" then return false end
-    if k > max then max = k end
-    count = count + 1
-  end
-  return count == max and max > 0
-end
-
+-- Encode tables
 local function encode_table(val, indent, level)
   local mt = getmetatable(val)
-  local is_obj = mt and mt.__json_object
-  local is_arr = mt and mt.__json_array
-  local t_is_array = is_arr or (not is_obj and is_array(val))
-  local tokens = {}
-  local ind, next_indent = "", ""
-  if indent and indent ~= true then
-    ind = string.rep(indent, level or 0)
-    next_indent = string.rep(indent, (level or 0) + 1)
-  end
+  local is_arr = is_array(val)
+  local jsontype = mt and mt.__jsontype
 
-  if t_is_array then
+  local tokens = {}
+  local spacing = indent and "\n" or ""
+  local indent_str = indent and string.rep(indent, level or 0) or ""
+  local next_indent = indent and string.rep(indent, (level or 0) + 1) or ""
+
+  if is_arr or jsontype == "array" then
     for i = 1, #val do
-      table.insert(tokens,
-        (indent and next_indent or "") ..
-        json.encode(val[i], indent, (level or 0) + 1)
-      )
+      table.insert(tokens, (next_indent or "") .. encode(val[i], indent, (level or 0) + 1))
     end
     if indent then
-      return "[\n" .. table.concat(tokens, ",\n") .. "\n" .. ind .. "]"
+      return "[" .. spacing .. table.concat(tokens, "," .. spacing) .. spacing .. indent_str .. "]"
     else
       return "[" .. table.concat(tokens, ",") .. "]"
     end
@@ -99,22 +94,20 @@ local function encode_table(val, indent, level)
     for k in pairs(val) do table.insert(keys, k) end
     table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
     for _, k in ipairs(keys) do
-      local v = val[k]
-      table.insert(tokens,
-        (indent and next_indent or "") ..
-        encode_string(k) .. ":" .. (indent and " " or "") ..
-        json.encode(v, indent, (level or 0) + 1)
-      )
+      local key = encode_string(tostring(k))
+      local value = encode(val[k], indent, (level or 0) + 1)
+      table.insert(tokens, (next_indent or "") .. key .. ":" .. (indent and " " or "") .. value)
     end
     if indent then
-      return "{\n" .. table.concat(tokens, ",\n") .. "\n" .. ind .. "}"
+      return "{" .. spacing .. table.concat(tokens, "," .. spacing) .. spacing .. indent_str .. "}"
     else
       return "{" .. table.concat(tokens, ",") .. "}"
     end
   end
 end
 
-function json.encode(val, indent, level)
+-- Main encode dispatcher
+encode = function(val, indent, level)
   local t = type(val)
   if t == "nil" then
     return "null"
@@ -125,144 +118,137 @@ function json.encode(val, indent, level)
   elseif t == "table" then
     return encode_table(val, indent, level)
   else
-    error("json.encode: unsupported type " .. t)
+    error("Cannot encode type: " .. t)
   end
 end
 
-------------------------------------------------------------------------
--- Decode (from original dkjson)
-------------------------------------------------------------------------
-
-local function decode_error(str, idx, msg)
-  error(string.format("Error at position %d: %s", idx, msg))
-end
-
-local function skip_whitespace(str, idx)
-  local _, e = str:find("^[ \n\r\t]+", idx)
-  if e then return e + 1 else return idx end
-end
-
-local function parse_null(str, idx)
-  if str:sub(idx, idx + 3) == "null" then
-    return nil, idx + 4
-  else
-    decode_error(str, idx, "expected 'null'")
+json.encode = function(val, options)
+  local indent = nil
+  if type(options) == "table" and options.indent then
+    indent = options.indent
+  elseif type(options) == "string" then
+    indent = options
   end
+  return encode(val, indent, 0)
 end
 
-local function parse_true(str, idx)
-  if str:sub(idx, idx + 3) == "true" then
-    return true, idx + 4
-  else
-    decode_error(str, idx, "expected 'true'")
+-- Simple JSON decode implementation
+function json.decode(str, pos, nullval)
+  pos = pos or 1
+
+  local function skip_whitespace()
+    while str:sub(pos, pos):match("%s") do pos = pos + 1 end
   end
-end
 
-local function parse_false(str, idx)
-  if str:sub(idx, idx + 4) == "false" then
-    return false, idx + 5
-  else
-    decode_error(str, idx, "expected 'false'")
+  local function parse_null()
+    if str:sub(pos, pos + 3) == "null" then
+      pos = pos + 4
+      return nullval
+    end
   end
-end
 
-local function parse_number(str, idx)
-  local num_str = str:match("^-?%d+%.?%d*[eE]?[+-]?%d*", idx)
-  if not num_str then
-    decode_error(str, idx, "invalid number")
+  local function parse_boolean()
+    if str:sub(pos, pos + 3) == "true" then
+      pos = pos + 4
+      return true
+    elseif str:sub(pos, pos + 4) == "false" then
+      pos = pos + 5
+      return false
+    end
   end
-  return tonumber(num_str), idx + #num_str
-end
 
-local function parse_string(str, idx)
-  local res = ""
-  idx = idx + 1 -- skip opening quote
-  while idx <= #str do
-    local c = str:sub(idx, idx)
-    if c == '"' then
-      return res, idx + 1
-    elseif c == "\\" then
-      local next_char = str:sub(idx + 1, idx + 1)
-      local esc = escape_char_map_inv["\\" .. next_char]
-      if esc then
-        res = res .. esc
-        idx = idx + 2
-      elseif next_char == "u" then
-        local hex = str:sub(idx + 2, idx + 5)
-        if not hex:match("%x%x%x%x") then
-          decode_error(str, idx, "invalid unicode escape")
+  local function parse_number()
+    local start = pos
+    while str:sub(pos, pos):match("[%d%.%+%-%eE]") do pos = pos + 1 end
+    local num = tonumber(str:sub(start, pos - 1))
+    return num
+  end
+
+  local function parse_string()
+    pos = pos + 1
+    local start = pos
+    local result = ""
+    while pos <= #str do
+      local c = str:sub(pos, pos)
+      if c == "\"" then
+        result = result .. str:sub(start, pos - 1)
+        pos = pos + 1
+        return result
+      elseif c == "\\" then
+        result = result .. str:sub(start, pos - 1)
+        local esc = str:sub(pos + 1, pos + 1)
+        local map = { b = "\b", f = "\f", n = "\n", r = "\r", t = "\t", ["\\"] = "\\", ['"'] = '"', ["/"] = "/" }
+        if map[esc] then
+          result = result .. map[esc]
+          pos = pos + 2
+        elseif esc == "u" then
+          local hex = str:sub(pos + 2, pos + 5)
+          result = result .. utf8.char(tonumber(hex, 16))
+          pos = pos + 6
         end
-        res = res .. utf8.char(tonumber(hex, 16))
-        idx = idx + 6
+        start = pos
       else
-        decode_error(str, idx, "invalid escape character")
+        pos = pos + 1
       end
-    else
-      res = res .. c
-      idx = idx + 1
     end
   end
-  decode_error(str, idx, "unclosed string")
-end
 
-local function parse_array(str, idx)
-  idx = idx + 1
-  local res = {}
-  local mt = { __json_array = true }
-  setmetatable(res, mt)
-  idx = skip_whitespace(str, idx)
-  if str:sub(idx, idx) == "]" then return res, idx + 1 end
-  while true do
-    local val
-    val, idx = json.decode(str, idx)
-    table.insert(res, val)
-    idx = skip_whitespace(str, idx)
-    local c = str:sub(idx, idx)
-    if c == "]" then return res, idx + 1 end
-    if c ~= "," then decode_error(str, idx, "expected ',' or ']'") end
-    idx = skip_whitespace(str, idx + 1)
-  end
-end
-
-local function parse_object(str, idx)
-  idx = idx + 1
-  local res = {}
-  local mt = { __json_object = true }
-  setmetatable(res, mt)
-  idx = skip_whitespace(str, idx)
-  if str:sub(idx, idx) == "}" then return res, idx + 1 end
-  while true do
-    local key
-    if str:sub(idx, idx) ~= '"' then
-      decode_error(str, idx, "expected string for object key")
+  local function parse_array()
+    pos = pos + 1
+    local result = {}
+    skip_whitespace()
+    if str:sub(pos, pos) == "]" then
+      pos = pos + 1
+      return setmetatable({}, { __jsontype = "array" })
     end
-    key, idx = parse_string(str, idx)
-    idx = skip_whitespace(str, idx)
-    if str:sub(idx, idx) ~= ":" then
-      decode_error(str, idx, "expected ':' after object key")
+    while true do
+      table.insert(result, parse_value())
+      skip_whitespace()
+      if str:sub(pos, pos) == "]" then
+        pos = pos + 1
+        return setmetatable(result, { __jsontype = "array" })
+      end
+      pos = pos + 1
     end
-    idx = skip_whitespace(str, idx + 1)
-    local val
-    val, idx = json.decode(str, idx)
-    res[key] = val
-    idx = skip_whitespace(str, idx)
-    local c = str:sub(idx, idx)
-    if c == "}" then return res, idx + 1 end
-    if c ~= "," then decode_error(str, idx, "expected ',' or '}'") end
-    idx = skip_whitespace(str, idx + 1)
   end
-end
 
-function json.decode(str, idx)
-  idx = skip_whitespace(str, idx or 1)
-  local c = str:sub(idx, idx)
-  if c == "{" then return parse_object(str, idx)
-  elseif c == "[" then return parse_array(str, idx)
-  elseif c == '"' then return parse_string(str, idx)
-  elseif c == "n" then return parse_null(str, idx)
-  elseif c == "t" then return parse_true(str, idx)
-  elseif c == "f" then return parse_false(str, idx)
-  else return parse_number(str, idx) end
+  local function parse_object()
+    pos = pos + 1
+    local result = {}
+    skip_whitespace()
+    if str:sub(pos, pos) == "}" then
+      pos = pos + 1
+      return result
+    end
+    while true do
+      skip_whitespace()
+      local key = parse_string()
+      skip_whitespace()
+      pos = pos + 1
+      skip_whitespace()
+      result[key] = parse_value()
+      skip_whitespace()
+      if str:sub(pos, pos) == "}" then
+        pos = pos + 1
+        return result
+      end
+      pos = pos + 1
+    end
+  end
+
+  function parse_value()
+    skip_whitespace()
+    local c = str:sub(pos, pos)
+    if c == "\"" then return parse_string()
+    elseif c == "{" then return parse_object()
+    elseif c == "[" then return parse_array()
+    elseif c == "n" then return parse_null()
+    elseif c == "t" or c == "f" then return parse_boolean()
+    else return parse_number()
+    end
+  end
+
+  return parse_value()
 end
 
 return json
