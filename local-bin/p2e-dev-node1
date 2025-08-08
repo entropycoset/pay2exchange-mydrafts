@@ -63,7 +63,6 @@ end
 
 local os_family = detect_os()
 print ( "os_family: " .. os_family )
-os.exit(1)
 
 ---------------------------------------------------------------------
 
@@ -350,37 +349,40 @@ end
 
 show_args()
 
+
+print("---------------------------------------------------------------------")
+
+local run_modes={}
+local args_str = escape_args(args)
+print("args_str= " .. args_str)
+
 for _,v in ipairs(arg) do
 	if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
 end
 
-local args_str = table.concat(args, " ")
-
-local run_modes = {}
 run_modes.n = function()
-    os.execute(prog .. " " .. args_str)
+    os.execute(escape_arg(prog) .. " " .. args_str)
 end
 run_modes.normal = run_modes.n
 
+run_modes.gdb = function()
+    os.execute('gdb --args ' .. escape_arg(prog) .. " " .. args_str)
+end
+
 run_modes.gdbm = function()
-    os.execute('gdb -ex "source mycatch.gdb" --args ' .. prog .. " " .. args_str)
+    os.execute('gdb -ex "source mycatch.gdb" --args ' .. escape_arg(prog) .. " " .. args_str)
 end
 
 run_modes.gdbt = function()
-    os.execute('gdb -ex "catch throw" --args ' .. prog .. " " .. args_str)
-end
-
-run_modes.gdb = function()
-    os.execute("gdb --args " .. prog .. " " .. args_str)
+    os.execute('gdb -ex "catch throw" --args ' .. escape_arg(prog) .. " " .. args_str)
 end
 
 run_modes.gdbx = function()
-    os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. prog .. " " .. args_str)
+    os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. escape_arg(prog) .. " " .. args_str)
 end
 
-print([[
----------------------------------------------------------------------
-]])
+print("---------------------------------------------------------------------")
+
 
 if run_modes[cfg_mode] then
     run_modes[cfg_mode]()
