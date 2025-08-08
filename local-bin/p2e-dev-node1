@@ -1,131 +1,156 @@
-#!/bin/bash
-#Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, and also released hereby as Public Domain
+#!/usr/bin/env lua
+-- make.lua
+-- Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, also released as Public Domain
 
-cfg_mode="${1:-normal}"
-cfg_chain="${2:-default}"
+local lfs = require("lfs")
 
-echo "Mode of this script: $cfg_mode ; Blockchain/genesis: $cfg_chain"
+local cfg_mode = arg[1] or "normal"
+local cfg_chain = arg[2] or "default"
 
-if [[ "$cfg_mode" == "x" ]] ; then # special mode to just edit this script itself
-	vim "$(readlink -f "$0")"
-	echo "After eiditing myself - exit"
-	exit
-fi
+print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain)
 
-# prepare showargs, if it is here
-if [[ ! -x ./showargs ]]; then
-	if [[ ! -r ./showargs ]]; then
-		g++ showargs.cpp -o showargs || echo "Can not compile showargs"
-	fi
-fi
+-- Special edit mode
+if cfg_mode == "x" then
+    local script = debug.getinfo(1).source:sub(2) -- get current script path
+    os.execute("vim " .. script)
+    print("After editing myself - exit")
+    os.exit()
+end
 
-# faketime breaks $RAND in bash, so we provide this instead
-good_rand() {
-	local max=$1
-	local max_limit=$((4294967296-2)) # -2 to be safe. make sure it will fit in bash on 32bit, and also we read just 4 bytes entropy
-	if (( max >= max_limit )); then
-		echo "ERROR: max value ($max) exceeds near-limit 32bit ($max_limit)" >&2
-		exit 1
-	fi
-	((max+=1))
-	RND=$(od -An -N4 -tu4 < /dev/urandom | awk -v awkmax="$max"  '{print $1 % awkmax}') ;
-	echo $RND
+-- Compile showargs if not present
+local function file_exists(path)
+    local f = io.open(path, "r")
+    if f then f:close() return true else return false end
+end
+
+local function is_executable(path)
+    return os.execute('[ -x "' .. path .. '" ]') == 0
+end
+
+if not is_executable("./showargs") then
+    if file_exists("./showargs.cpp") then
+        local res = os.execute("g++ showargs.cpp -o showargs")
+        if res ~= 0 then print("Cannot compile showargs") end
+    end
+end
+
+-- good_rand() - safely generate random int in range
+local function good_rand(max)
+    local max_limit = 4294967296 - 2
+    if max >= max_limit then
+        io.stderr:write("ERROR: max value (" .. max .. ") exceeds 32bit limit (" .. max_limit .. ")\n")
+        os.exit(1)
+    end
+    local handle = io.popen("od -An -N4 -tu4 < /dev/urandom")
+    local rnd = tonumber(handle:read("*a"):match("%d+"))
+    handle:close()
+    return rnd % (max + 1)
+end
+
+print("Cleanup of old run data")
+os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
+
+-- Generate random ports
+local r1 = good_rand(970)
+local port1 = r1 + 1025
+local port2 = port1 + 1
+
+print("port1=" .. port1 .. " port2=" .. port2)
+
+-- Load secret
+local home = os.getenv("HOME")
+local privkey1_fullfn = home .. "/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret"
+local privkey1_secret = ""
+
+if not file_exists(privkey1_fullfn) then
+    print("Cannot read secret file (" .. privkey1_fullfn .. "). Aborting.")
+    os.exit(1)
+else
+    local file = io.open(privkey1_fullfn, "r")
+    local line = file:read("*l")
+    file:close()
+    if not line:match("^[%w]+$") then
+        print("The data read does not look correct. Aborting.")
+        os.exit(1)
+    else
+        privkey1_secret = line
+        print("Read secret key.")
+    end
+end
+
+-- Determine genesis file
+local genesis_map = {
+    default = home .. "/chain-p2e/test-genesis-p2e1.json",
+    p2e1 = home .. "/chain-p2e/test-genesis-p2e1.json",
+    ec1  = home .. "/chain-p2e/test-genesis-ec1.json",
+    bit  = home .. "/chain-p2e/bitshares1-mod.json"
+}
+local genesis = genesis_map[cfg_chain] or genesis_map["default"]
+
+if not genesis_map[cfg_chain] then
+    print("Unknown chain: " .. cfg_chain)
+end
+
+print("Genesis: " .. genesis)
+
+-- Construct program arguments
+local prog = "programs/witness_node/witness_node"
+local args = {
+    "--rpc-endpoint=0.0.0.0:" .. port1,
+    "--p2p-endpoint=0.0.0.0:" .. port2,
+    '--witness-id="1.6.1"',
+    '--private-key=["BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9", "' .. privkey1_secret .. '"]',
+    "--enable-stale-production",
+    "--genesis-json=" .. genesis
 }
 
-echo "Cleanup of old run data"
-rm -rf ./witness_node_data_dir/ || { echo "can not remove old data" ; exit 1 ; }
+-- Check if witness_node is executable
+local function file_is_executable(path)
+    return os.execute('[ -x "' .. path .. '" ]') == 0
+end
 
-#random port 1025 to below 2000
-r1=$(good_rand 970)
-port1=$((r1+1025))
-port2=$((port1+1))
+if not file_is_executable(prog) then
+    io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable.\n")
+    os.exit(1)
+end
 
-echo "port1=$port1 port2=$port2"
+print("Arguments for program")
+for _, arg in ipairs(args) do
+    print("  " .. arg)
+end
 
-# load the secret from file:
-privkey1_secret=""
-privkey1_fullfn="$HOME/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret"
+-- Showargs
+if is_executable("./showargs") then
+    print("Arguments for program, as printed by a dummy program:")
+    local cmd = "./showargs " .. table.concat(args, " ")
+    os.execute(cmd)
+end
 
-if [ ! -r "${privkey1_fullfn}" ]; then
-	echo "Can not read secret file (${privkey1_fullfn}) so we can not start as witness. Aborting." ; exit 1 
+-- Run depending on mode
+local run_modes = {
+    n = function()
+        os.execute(prog .. " " .. table.concat(args, " "))
+    end,
+    normal = function()
+        os.execute(prog .. " " .. table.concat(args, " "))
+    end,
+    gdbm = function()
+        os.execute('gdb -ex "source mycatch.gdb" --args ' .. prog .. " " .. table.concat(args, " "))
+    end,
+    gdbt = function()
+        os.execute('gdb -ex "catch throw" --args ' .. prog .. " " .. table.concat(args, " "))
+    end,
+    gdb0 = function()
+        os.execute("gdb --args " .. prog .. " " .. table.concat(args, " "))
+    end,
+    gdbx = function()
+        os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. prog .. " " .. table.concat(args, " "))
+    end
+}
+
+if run_modes[cfg_mode] then
+    run_modes[cfg_mode]()
 else
-	read -r firstline < "${privkey1_fullfn}"
-	if [[ ! $firstline =~ ^[[:alnum:]]+$ ]]; then
-		echo "The data read does not look correct. Aborting." ; exit 1
-	else
-		privkey1_secret="${firstline}"
-		echo "Read secret key."
-	fi
-fi
-
-genesis="$HOME/chain-p2e/test-genesis-p2e1.json"
-case "$cfg_chain" in
-    default)
-			:
-		;;
-		p2e1)
-			genesis="$HOME/chain-p2e/test-genesis-p2e1.json"
-		;;
-		ec1)
-			genesis="$HOME/chain-p2e/test-genesis-ec1.json"
-		;;
-		bit)
-			genesis="$HOME/chain-p2e/bitshares1-mod.json"
-		;;
-    *)
-		echo "Unknown chain: $cfg_chain"
-    ;;
-esac
-echo "Genesis: $genesis"
-
-prog='programs/witness_node/witness_node'
-args=(
-"--rpc-endpoint=0.0.0.0:$port1"
-"--p2p-endpoint=0.0.0.0:$port2"
-'--witness-id="1.6.1"'
-"--private-key=[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"$privkey1_secret\"]"
-'--enable-stale-production'
-"--genesis-json=${genesis}"
-)
-#"--genesis-json=$HOME/chain-p2e/bitshares1-mod.json"
-
-
-echo "Arguments for program"
-printf '  %s\n' "${args[@]}"
-
-if [[ -x ./showargs ]]; then
-	echo "Arguments for program, as printed by a dummy program (each is quoted inside square-brackets)"
-	./showargs "${args[@]}"
-fi
-
-
-case "$cfg_mode" in
-	# also, special mode "x" is handled on top of this script
-    n|normal)
-	"$prog" "${args[@]}"
-        ;;
-    gdbm)
-	gdb -ex 'source mycatch.gdb'  --args "$prog" "${args[@]}"
-        ;;
-    gdbt)
-	gdb -ex 'catch throw'  --args "$prog" "${args[@]}"
-        ;;
-    gdb0)
-	gdb --args "$prog" "${args[@]}"
-        ;;
-    gdbx)
-	gdb -ex 'set can-use-hw-watchpoints  0'  -ex 'source devel/gdb/poolwatch.gdb'   -ex 'break _xxx_point1'   --args "$prog" "${args[@]}"
-        ;;
-    *)
-        echo "Unknown mode: $cfg_mode"
-        ;;
-esac
-
-#echo "old:"
-#set -x
-#programs/witness_node/witness_node --rpc-endpoint=0.0.0.0:$port1 --p2p-endpoint=0.0.0.0:$port2 --witness-id="\"1.6.1\"" --private-key="[\"BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9\", \"5JqNvafBnvKhD6wzifqQEa5YtPQr46VHdFdynXeMEiqX7my9gFF\"]" --enable-stale-production --genesis-json=$HOME/chain/test-genesis.json
-#set +x
-
-#printf 'Arg[%d] = %s\n' "${!args[@]}" "${args[@]}"
-
+    print("Unknown mode: " .. cfg_mode)
+end
 
