@@ -295,12 +295,13 @@ if cfg_role == "one" then -- the old way
 			end
 	end
 elseif begins_with(cfg_role, "wit") then
-	wit=cfg_mode
+	wit=cfg_role
 	print("You are a witness (" .. wit .. ")")
 	if not genesis_fn_private then
 		error("You attempt to have role of a witness, but we do not have genesis-private. wrong chain? chain is: " .. cfg_chain)
 	end
-	local wit_num = tonumber(str:match("^wit(%d+)$"))
+	local wit_num_str = wit:match("^wit(%d+)$")
+	local wit_num = tonumber(wit_num_str)
 	print("You are a witness number: " .. wit_num)
 	mysettings.witness_id = '1.6.' .. tostring(wit_num)
 	mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
