@@ -163,7 +163,9 @@ local function extract_keys_jsondata(data, name)
 end
 
 function extract_keys_jsonfile(json_fn, target_name)
-	print("Loading JSON with private genesis keys from (" .. json_fn .. ")")
+	if not json_fn then error("extract json keys from file - but no filename") end
+	if not target_name then error("extract json keys from file - but no target_name") end
+	print("Loading JSON with private genesis keys from (" .. json_fn .. ") for target (" .. target_name .. ")")
     local json_text = read_file(json_fn)
     local data, pos, err = json.decode(json_text, 1, nil)
     if err then
@@ -295,6 +297,9 @@ if cfg_role == "one" then -- the old way
 elseif begins_with(cfg_role, "wit") then
 	wit=cfg_mode
 	print("You are a witness (" .. wit .. ")")
+	if not genesis_fn_private then
+		error("You attempt to have role of a witness, but we do not have genesis-private. wrong chain? chain is: " .. cfg_chain)
+	end
 	mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
 elseif begins_with(cfg_role, "node") then
 	print("You are just a node (not a witness - not loading wit privkey)")
@@ -372,9 +377,6 @@ for i, v in ipairs(args) do
 end
 
 show_args(args)
-
-os.exit(42)
-
 
 print("---------------------------------------------------------------------")
 
