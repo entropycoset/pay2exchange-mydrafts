@@ -4,10 +4,88 @@
 
 local lfs = require("lfs")
 
+---------------------------------------------------------------------
+
+function help()
+	print [[
+p2e-dev-node1 h    - this shows help and exits
+p2e-dev-node1 d    - delete the run data
+p2e-dev-node1 x    - this starts editing this script here
+p2e-dev-node1 MODE CHAIN ROLE OPTIONS
+p2e-dev-node1 normal bit node
+p2e-dev-node1 normal ec1 wit01
+p2e-dev-node1 gdb ec1 wit01
+
+OPTIONS: -dry (dry run).
+]]
+end
+
+---------------------------------------------------------------------
+
+function begins_with(str, prefix)
+	if (type(str) ~= "string") or (type(prefix) ~= "string") then error("Must call begin_with() with 2 strings.",2) end
+	return str:sub(1, #prefix) == prefix
+end
+
+---------------------------------------------------------------------
+
+local	extract_keys_jsonfile -- (json_fn, target_name)
+
+
+local json = require("dkjson")  -- requires dkjson (https://github.com/LuaDist/dkjson)
+
+-- You can hardcode the name here or pass via argument
+local target_name = "wit01"
+
+-- Load JSON from file or stdin
+local function read_file(filename)
+    local file = io.open(filename, "r")
+    if not file then
+        error("Failed to open file: " .. filename)
+    end
+    local content = file:read("*a")
+    file:close()
+    return content
+end
+
+-- Extract keys for the given name
+local function extract_keys_jsondata(data, name)
+    for _, account in ipairs(data.initial_accounts) do
+        if account.name == name then
+            local public_key = account.owner_key_full.public_key
+            local private_key = account.owner_key_full.wif_priv_key
+            local address = account.owner_key
+            return public_key, private_key, address
+        end
+    end
+    return nil, nil, nil
+end
+
+function extract_keys_jsonfile(json_fn, target_name)
+	print("Loading JSON with private genesis keys from (" .. json_fn .. ")")
+    local json_text = read_file(json_fn)
+    local data, pos, err = json.decode(json_text, 1, nil)
+    if err then
+        error("Failed to decode JSON: " .. err)
+    end
+
+    local pub, priv, addr = extract_keys_jsondata(data, target_name)
+
+    if pub and priv and addr then
+			return { pub = pub, priv = priv, addr = addr }
+    else
+        print("Can not (fully) load privkeys and data for account (witness): " .. target_name)
+    end
+end
+
+---------------------------------------------------------------------
+
+
 local cfg_mode = arg[1] or "normal"
 local cfg_chain = arg[2] or "default"
+local cfg_role = arg[3] or "node"
 
-print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain)
+print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain .. " ; our role: " .. cfg_role)
 
 -- Special edit mode
 if cfg_mode == "x" then
@@ -16,6 +94,14 @@ if cfg_mode == "x" then
     print("After editing myself - exit")
     os.exit()
 end
+if cfg_mode == "h" then
+	help()
+	os.exit()
+end
+
+print([[
+=====================================================================
+]])
 
 -- Compile showargs if not present
 local function file_exists(path)
@@ -47,8 +133,12 @@ local function good_rand(max)
     return rnd % (max + 1)
 end
 
-print("Cleanup of old run data")
+print("Cleanup of old run data (delete / remove)")
 os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
+if cfg_mode == "d" then
+	print("Removed - done, exiting")
+	os.exit()
+end
 
 -- Generate random ports
 local r1 = good_rand(970)
@@ -57,52 +147,81 @@ local port2 = port1 + 1
 
 print("port1=" .. port1 .. " port2=" .. port2)
 
--- Load secret
 local home = os.getenv("HOME")
-local privkey1_fullfn = home .. "/.devel/SECRET/pay2exchange/BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9.secret"
-local privkey1_secret = ""
-
-if not file_exists(privkey1_fullfn) then
-    print("Cannot read secret file (" .. privkey1_fullfn .. "). Aborting.")
-    os.exit(1)
-else
-    local file = io.open(privkey1_fullfn, "r")
-    local line = file:read("*l")
-    file:close()
-    if not line:match("^[%w]+$") then
-        print("The data read does not look correct. Aborting.")
-        os.exit(1)
-    else
-        privkey1_secret = line
-        print("Read secret key.")
-    end
-end
 
 -- Determine genesis file
 local genesis_map = {
-    default = home .. "/chain-p2e/test-genesis-p2e1.json",
-    p2e1 = home .. "/chain-p2e/test-genesis-p2e1.json",
-    ec1  = home .. "/chain-p2e/test-genesis-ec1.json",
-    bit  = home .. "/chain-p2e/bitshares1-mod.json"
+    default = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil },
+    p2e1 = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil }, -- the private json is somewhere (todo?)
+    ec1  = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
+    bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
+    bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
 }
-local genesis = genesis_map[cfg_chain] or genesis_map["default"]
+local genesis_fn = genesis_map[cfg_chain].genesis
+local genesis_fn_private = genesis_map[cfg_chain].private
 
 if not genesis_map[cfg_chain] then
     print("Unknown chain: " .. cfg_chain)
 end
 
-print("Genesis: " .. genesis)
+print("Genesis filename: " .. genesis_fn)
+
+-- Load secret
+local mykey = { pub = nil, priv = nil }
+local mysettings = { witness_id = nil }
+
+if cfg_role == "one" then -- the old way
+	mykey.pub = "BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9"
+	local privkey1_fullfn = home .. "/.devel/SECRET/pay2exchange/" .. mykey.pub .. ".secret"
+	local privkey1_secret = ""
+	if not file_exists(privkey1_fullfn) then
+			print("Cannot read secret file (" .. privkey1_fullfn .. "). Aborting.")
+			os.exit(1)
+	else
+			local file = io.open(privkey1_fullfn, "r")
+			local line = file:read("*l")
+			file:close()
+			if not line:match("^[%w]+$") then
+					print("The data read does not look correct. Aborting.")
+					os.exit(1)
+			else
+					privkey1_secret = line
+					print("Read secret key.")
+					mykey.priv = privkey1_secret
+					mysettings.witness_id = '1.6.1'
+			end
+	end
+elseif begins_with(cfg_role, "wit") then
+	wit=cfg_mode
+	print("You are a witness (" .. wit .. ")")
+	mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
+elseif begins_with(cfg_role, "node") then
+	print("You are just a node (not a witness - not loading wit privkey)")
+else
+	print("Unknown role (" .. cfg_role .. ")")
+	os.exit(1)
+end
 
 -- Construct program arguments
 local prog = "programs/witness_node/witness_node"
 local args = {
     "--rpc-endpoint=0.0.0.0:" .. port1,
     "--p2p-endpoint=0.0.0.0:" .. port2,
-    '--witness-id="1.6.1"',
-    '--private-key=["BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9", "' .. privkey1_secret .. '"]',
     "--enable-stale-production",
-    "--genesis-json=" .. genesis
+    "--genesis-json=" .. genesis_fn
 }
+if mykey.pub or mykey.priv then
+  if not (mykey.pub and mykey.priv) then
+    error("If you set mykey then set all of it.")
+  end
+	local arg_add = string.format('--private-key=["%s", "%s"]', mykey.priv, mykey.pub)
+	print("Creating arg to set private-key: " .. arg_add)
+  table.insert(args, arg_add)
+end
+
+if mysettings.witness_id then
+	table.insert('--witness-id="' .. mysettings.witness_id ..  '"')
+end
 
 -- Check if witness_node is executable
 local function file_is_executable(path)
@@ -114,43 +233,68 @@ if not file_is_executable(prog) then
     os.exit(1)
 end
 
-print("Arguments for program")
-for _, arg in ipairs(args) do
-    print("  " .. arg)
+function show_args()
+	print("Arguments for program")
+	for _, arg in ipairs(args) do
+			print("  " .. arg)
+	end
+
+	-- Showargs
+	if is_executable("./showargs") then
+			print("Arguments for program, as printed by a dummy program:")
+			local cmd = "./showargs " .. table.concat(args, " ")
+			os.execute(cmd)
+	end
 end
 
--- Showargs
-if is_executable("./showargs") then
-    print("Arguments for program, as printed by a dummy program:")
-    local cmd = "./showargs " .. table.concat(args, " ")
-    os.execute(cmd)
+show_args()
+
+for _,v in ipairs(arg) do
+	if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
 end
 
--- Run depending on mode
-local run_modes = {
-    n = function()
-        os.execute(prog .. " " .. table.concat(args, " "))
-    end,
-    normal = function()
-        os.execute(prog .. " " .. table.concat(args, " "))
-    end,
-    gdbm = function()
-        os.execute('gdb -ex "source mycatch.gdb" --args ' .. prog .. " " .. table.concat(args, " "))
-    end,
-    gdbt = function()
-        os.execute('gdb -ex "catch throw" --args ' .. prog .. " " .. table.concat(args, " "))
-    end,
-    gdb0 = function()
-        os.execute("gdb --args " .. prog .. " " .. table.concat(args, " "))
-    end,
-    gdbx = function()
-        os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. prog .. " " .. table.concat(args, " "))
-    end
-}
+local args_str = table.concat(args, " ")
+
+local run_modes = {}
+run_modes.n = function()
+    os.execute(prog .. " " .. args_str)
+end
+run_modes.normal = run_modes.n
+
+run_modes.gdbm = function()
+    os.execute('gdb -ex "source mycatch.gdb" --args ' .. prog .. " " .. args_str)
+end
+
+run_modes.gdbt = function()
+    os.execute('gdb -ex "catch throw" --args ' .. prog .. " " .. args_str)
+end
+
+run_modes.gdb = function()
+    os.execute("gdb --args " .. prog .. " " .. args_str)
+end
+
+run_modes.gdbx = function()
+    os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. prog .. " " .. args_str)
+end
+
+print([[
+---------------------------------------------------------------------
+]])
 
 if run_modes[cfg_mode] then
     run_modes[cfg_mode]()
 else
     print("Unknown mode: " .. cfg_mode)
 end
+
+print([[
+---------------------------------------------------------------------
+]])
+
+print("Done.")
+print("Was running with args:")
+show_args()
+
+
+
 
