@@ -315,7 +315,7 @@ if mykey.pub or mykey.priv then
   if not (mykey.pub and mykey.priv) then
     error("If you set mykey then set all of it.")
   end
-	local arg_add = string.format('--private-key=["%s", "%s"]', mykey.priv, mykey.pub)
+	local arg_add = string.format('--private-key=["%s", "%s"]', mykey.pub, mykey.priv)
 	print("Creating arg to set private-key: " .. arg_add)
   table.insert(args, arg_add)
 end
