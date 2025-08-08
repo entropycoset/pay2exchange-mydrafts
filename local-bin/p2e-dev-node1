@@ -27,6 +27,107 @@ function begins_with(str, prefix)
 	return str:sub(1, #prefix) == prefix
 end
 
+
+local function detect_os()
+  local windows_slash = package.config:sub(1,1) == '\\' ;
+  
+  if jit and jit.os then
+		print("Read jit.os [" .. jit.os .. "]")
+    if jit.os == "Windows" then
+      if not windows_slash then error("Can not detect OS, conflict between (win) jit.os(" .. jit.os .. ") and slash") end
+      return "Windows"
+    end
+    if jit.os == "OSX" then
+			if windows_slash then error("Can not detect OS, conflict between (OSX) jit.os(" .. jit.os .. ") and slash") end
+      return "Darwin"
+		else -- we assume the rest are unix-like
+			if windows_slash then error("Can not detect OS, conflict between (misc) jit.os(" .. jit.os .. ") and slash") end
+      return "Unixes"
+		end
+	else
+		print("(Can not read OS name from JIT, will try other detection)")
+  end
+
+  if windows_slash then
+    return "Windows"
+  else
+    local uname = io.popen("uname"):read("*l")
+		print("Read uname [" .. uname .. "]")
+    if uname == "Darwin" then
+      return "Darwin"
+    else
+      return "Unixes"
+    end
+  end
+end
+
+local os_family = detect_os()
+print ( "os_family: " .. os_family )
+os.exit(1)
+
+---------------------------------------------------------------------
+
+-- TODO compare vs https://mojoauth.com/escaping/command-line-argument-escaping-in-lua/ and more
+local function escape_arg_unix(arg)
+  -- Replace every single quote ' with '\'' which is:
+  -- close quote, escaped single quote, open quote
+  return "'" .. tostring(arg):gsub("'", "'\\''") .. "'"
+end
+
+local function escape_args_unix(args)
+  local escaped = {}
+  for i, arg in ipairs(args) do
+    escaped[i] = escape_arg_unix(arg)
+  end
+  return table.concat(escaped, " ")
+end
+
+---------------------------------------
+
+local function escape_arg_windows(arg)
+  -- Convert to string
+  arg = tostring(arg)
+
+  -- Double all double quotes inside argument
+  arg = arg:gsub('"', '""')
+
+  -- Wrap in double quotes if needed (spaces or special chars)
+  if arg:match('[ \t"^&|<>%]') then
+    arg = '"' .. arg .. '"'
+  end
+
+  return arg
+end
+
+local function escape_args_windows(args)
+  local escaped = {}
+  for i, arg in ipairs(args) do
+    escaped[i] = escape_arg_windows(arg)
+  end
+  return table.concat(escaped, " ")
+end
+
+---------------------------------------
+
+local function escape_arg(arg)
+	if (os_family == "Unixes") or (os_family == "Darwin") then
+		return escape_arg_unix(arg)
+	elseif (os_family == "Windows") then
+		return escape_arg_windows(arg)
+	else
+		error("do not know how to escape arguments on os family (" .. os_family .. ")")
+	end
+end
+local function escape_args(args)
+	if (os_family == "Unixes") or (os_family == "Darwin") then
+		return escape_args_unix(args)
+	elseif (os_family == "Windows") then
+		return escape_args_windows(args)
+	else
+		error("do not know how to escape argsuments on os family (" .. os_family .. ")")
+	end
+end
+
 ---------------------------------------------------------------------
 
 local	extract_keys_jsonfile -- (json_fn, target_name)
