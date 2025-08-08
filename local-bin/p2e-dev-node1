@@ -3,6 +3,7 @@
 -- Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, also released as Public Domain
 
 local lfs = require("lfs")
+local posix = require("posix")
 
 ---------------------------------------------------------------------
 
@@ -333,7 +334,24 @@ if not file_is_executable(prog) then
     os.exit(1)
 end
 
-function show_args()
+
+print("XXX")
+local prog = "./showargs"
+local args = {"./showargs", '--private-key=["5J7n", "BTS66b"]'}
+
+-- print each argument to verify
+for i, v in ipairs(args) do
+  print("ARG[" .. i .. "] = " .. v)
+end
+
+-- Run the program
+local pid, err = posix.spawn(prog, {
+  args = args
+})
+
+
+
+function show_args(args)
 	print("Arguments for program")
 	for _, arg in ipairs(args) do
 			print("  " .. arg)
@@ -342,48 +360,48 @@ function show_args()
 	-- Showargs
 	if is_executable("./showargs") then
 			print("Arguments for program, as printed by a dummy program:")
-			local cmd = "./showargs " .. table.concat(args, " ")
-			os.execute(cmd)
+
+local prog = "./showargs"
+local args = {"./showargs", '--private-key=["5J7n", "BTS66b"]'}
+
+-- print each argument to verify
+for i, v in ipairs(args) do
+  print("ARG[" .. i .. "] = " .. v)
+end
+
+-- Run the program
+local pid, err = posix.spawn(prog, {
+  args = args
+})
+
+
+
+			prog="./showargs"
+			table.insert(args,	1, prog)
+    	posix.spawn(prog, {args=args})
 	end
 end
 
-show_args()
+show_args(args)
 
 
 print("---------------------------------------------------------------------")
 
 local run_modes={}
-local args_str = escape_args(args)
-print("args_str= " .. args_str)
 
-for _,v in ipairs(arg) do
-	if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
+
+for _, v in ipairs(arg) do
+  if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
 end
 
+local run_modes = {}
+
 run_modes.n = function()
-    os.execute(escape_arg(prog) .. " " .. args_str)
+    posix.spawn(prog, {prog, args=args})
 end
 run_modes.normal = run_modes.n
 
-run_modes.gdb = function()
-    os.execute('gdb --args ' .. escape_arg(prog) .. " " .. args_str)
-end
-
-run_modes.gdbm = function()
-    os.execute('gdb -ex "source mycatch.gdb" --args ' .. escape_arg(prog) .. " " .. args_str)
-end
-
-run_modes.gdbt = function()
-    os.execute('gdb -ex "catch throw" --args ' .. escape_arg(prog) .. " " .. args_str)
-end
-
-run_modes.gdbx = function()
-    os.execute('gdb -ex "set can-use-hw-watchpoints 0" -ex "source devel/gdb/poolwatch.gdb" -ex "break _xxx_point1" --args ' .. escape_arg(prog) .. " " .. args_str)
-end
-
 print("---------------------------------------------------------------------")
-
-
 if run_modes[cfg_mode] then
     run_modes[cfg_mode]()
 else
@@ -396,7 +414,7 @@ print([[
 
 print("Done.")
 print("Was running with args:")
-show_args()
+show_args(args)
 
 
 
