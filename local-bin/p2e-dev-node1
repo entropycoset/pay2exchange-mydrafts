@@ -339,6 +339,24 @@ if not file_is_executable(prog) then
     os.exit(1)
 end
 
+function simple_exec(prog,args)
+	local argv = { [0] = prog }
+	for i = 1, #args do
+		argv[i] = args[i]
+	end
+	local pid = posix.fork()
+	if pid == 0 then -- we are the child here
+		-- Child inherits stdin/stdout/stderr, so TTY stays attached
+		posix.execp(prog, argv) -- start the real cmd
+		-- we reach this line of code (inside this pid==0) only if we failed to call the child process
+		error("Failed to run program ("..prog..")")
+		posix._exit(127)
+	else
+		-- Parent waits for interactive program to exit
+		posix.wait(pid)
+	end
+end
+
 
 function show_args(args)
 	print("Arguments for program")
@@ -346,53 +364,35 @@ function show_args(args)
 			print("  " .. arg)
 	end
 
-	-- Showargs
 	if is_executable("./showargs") then
 			print("-------------------")
 			print("Arguments for program, as printed by a dummy program:")
-
-			local prog = "./showargs"   -- or your curses program
-			local argv = { [0] = prog }
-			for i = 1, #args do
-				argv[i] = args[i]
-			end
-
-			local pid = posix.fork()
-			if pid == 0 then
-				-- Child inherits stdin/stdout/stderr, so TTY stays attached
-				posix.execp(prog, argv)
-				-- If exec fails:
-				posix._exit(127)
-			else
-				-- Parent waits for interactive program to exit
-				posix.wait(pid)
-			end
+			simple_exec("./showargs", args)
 			print("-------------------")
 	end -- if binary showargs
 end -- our show_args()
 
--- print each argument to verify
+-- print each argument to verify what we try to execute
 for i, v in ipairs(args) do
   print("ARG[" .. i .. "] = " .. v)
 end
-
 show_args(args)
 
 print("---------------------------------------------------------------------")
 
 local run_modes={}
 
-
 for _, v in ipairs(arg) do
   if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
 end
 
-local run_modes = {}
-
 run_modes.n = function()
-    posix.spawn(prog, {prog, args=args})
+		simple_exec(prog, args);
 end
 run_modes.normal = run_modes.n
+run_modes.gdb = function()
+		simple_exec("gdb", {"--args", prog, unpack(args)});
+end
 
 print("---------------------------------------------------------------------")
 if run_modes[cfg_mode] then
