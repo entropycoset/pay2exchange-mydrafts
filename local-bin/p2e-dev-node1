@@ -335,22 +335,6 @@ if not file_is_executable(prog) then
 end
 
 
-print("XXX")
-local prog = "./showargs"
-local args = {"./showargs", '--private-key=["5J7n", "BTS66b"]'}
-
--- print each argument to verify
-for i, v in ipairs(args) do
-  print("ARG[" .. i .. "] = " .. v)
-end
-
--- Run the program
-local pid, err = posix.spawn(prog, {
-  args = args
-})
-
-
-
 function show_args(args)
 	print("Arguments for program")
 	for _, arg in ipairs(args) do
@@ -359,30 +343,37 @@ function show_args(args)
 
 	-- Showargs
 	if is_executable("./showargs") then
+			print("-------------------")
 			print("Arguments for program, as printed by a dummy program:")
 
-local prog = "./showargs"
-local args = {"./showargs", '--private-key=["5J7n", "BTS66b"]'}
+			local prog = "./showargs"   -- or your curses program
+			local argv = { [0] = prog }
+			for i = 1, #args do
+				argv[i] = args[i]
+			end
+
+			local pid = posix.fork()
+			if pid == 0 then
+				-- Child inherits stdin/stdout/stderr, so TTY stays attached
+				posix.execp(prog, argv)
+				-- If exec fails:
+				posix._exit(127)
+			else
+				-- Parent waits for interactive program to exit
+				posix.wait(pid)
+			end
+			print("-------------------")
+	end -- if binary showargs
+end -- our show_args()
 
 -- print each argument to verify
 for i, v in ipairs(args) do
   print("ARG[" .. i .. "] = " .. v)
 end
 
--- Run the program
-local pid, err = posix.spawn(prog, {
-  args = args
-})
-
-
-
-			prog="./showargs"
-			table.insert(args,	1, prog)
-    	posix.spawn(prog, {args=args})
-	end
-end
-
 show_args(args)
+
+os.exit(42)
 
 
 print("---------------------------------------------------------------------")
@@ -415,6 +406,7 @@ print([[
 print("Done.")
 print("Was running with args:")
 show_args(args)
+
 
 
 
