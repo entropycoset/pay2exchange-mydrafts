@@ -5,6 +5,8 @@
 local lfs = require("lfs")
 local posix = require("posix")
 
+local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
+
 ---------------------------------------------------------------------
 
 function help()
@@ -27,6 +29,24 @@ end
 function begins_with(str, prefix)
 	if (type(str) ~= "string") or (type(prefix) ~= "string") then error("Must call begin_with() with 2 strings.",2) end
 	return str:sub(1, #prefix) == prefix
+end
+
+local function dbg_dump_(t, indent)
+	indent = indent or "  "
+	for k, v in pairs(t) do
+		if type(v) == "table" then
+			print(indent .. tostring(k) .. ":")
+			dbg_dump_(v, indent .. indent)
+		else
+			print(indent .. tostring(k) .. ": " .. tostring(v))
+		end
+	end
+end
+
+local function dbg_dump(t, indent)
+	print("v--(dump)-------------------------")
+	dbg_dump_(t,indent)
+	print("^--(dump)-------------------------")
 end
 
 
@@ -335,6 +355,31 @@ if mysettings.witness_id then
 	table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..  '"')
 end
 
+-- pass extra execargs -e
+local function args_after_e(args)
+	local found = false
+	local result = {}
+	local found_ix = 0
+	for ix, v in pairs(args) do
+		if found then
+			if ix > found_ix then
+				table.insert(result, v)
+			end
+		elseif v == "-e" then
+			found = true
+			found_ix = ix
+		end
+	end
+	return result
+end
+
+local after_e = args_after_e(arg)
+if #after_e > 0 then
+	for i = 1, #after_e do
+			execargs[#execargs + 1] = after_e[i]
+	end
+end
+
 -- Check if witness_node is executable
 local function file_is_executable(path)
     return os.execute('[ -x "' .. path .. '" ]') == 0
@@ -379,10 +424,11 @@ function show_args(args)
 end -- our show_args()
 
 -- print each argument to verify what we try to execute
-for i, v in ipairs(args) do
+for i, v in ipairs(execargs) do
   print("ARG[" .. i .. "] = " .. v)
 end
-show_execargs(execargs)
+show_args(execargs)
+
 
 print("---------------------------------------------------------------------")
 
