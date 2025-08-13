@@ -25,6 +25,19 @@ local function expand_path(path)
   return path
 end
 
+local function copy_file(source_fn, dest_fn)
+	local src_file = io.open(source_fn, "rb")
+	assert(src_file, "Failed to open source file")
+	local content = src_file:read("*all")
+	src_file:close()
+
+	-- Write to destination
+	local dest_file = io.open(dest_fn, "wb")
+	assert(dest_file, "Failed to open destination file")
+	dest_file:write(content)
+	dest_file:close()
+end
+
 -- Check for file existence
 local function file_exists(path)
   local expanded_path = expand_path(path)
@@ -35,7 +48,7 @@ end
 
 -- Run external command and return stdout
 local function run_cmd(cmd)
-io.stderr:write("Running cmd... \n")
+	io.stderr:write("Running cmd... \n")
   -- (avoid this to not leak the seed onto screen) -- io.stderr:write("Running cmd: " .. cmd .. "\n")
   local f = assert(io.popen(cmd, 'r'))
   local output = f:read('*a')
@@ -212,7 +225,7 @@ elseif mode == "-g" then
     table.insert(balances, {
       owner = data.owner_addr,
       asset_symbol = "BTS",
-      amount = 100000
+      amount = 25000 * 100000
     })
 
     table.insert(committee, { owner_name = wit })

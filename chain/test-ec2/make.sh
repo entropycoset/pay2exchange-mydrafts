@@ -6,6 +6,12 @@ cfg_sub="$1"
 chain_seeds_dir="$HOME/.devel/SECRET/pay2exchange/chain/make-ec2${cfg_sub}/"
 chain_seeds_fn="$chain_seeds_dir/seed.txt"
 
+save_tolocal_private_fn="$HOME/chain-p2e/SECRET/test-genesis-ec2/private.json"
+save_tolocal_publicgenesis_fn="$HOME/chain-p2e/test-genesis-ec2.json"
+save_togit_priv_fn="$HOME/chain-p2e/link-git/bitshares/pay2exchange-testnet/genesis.private.json"
+save_togit_publicgenesis_fn="$HOME/chain-p2e/link-git/bitshares/pay2exchange-testnet/genesis.json"
+save_togit_cwd="$HOME/chain-p2e/link-git/bitshares/pay2exchange-testnet/"
+
 makeseed() {
 	if ! pwgen -s -0 20 > "$1"; then
 		echo "Error: Failed to generate seed with pwgen" >&2
@@ -55,7 +61,7 @@ if [ ! -f "./input2.json" ]; then
 fi
 
 read -e -i "5" -p "how many witnesses? (odd number)> " opt_wit
-read -e -i "60" -p "how many SECONDS delay? (you should start up all witnesses before this many seconds from now)> " opt_delay
+read -e -i "300" -p "how many SECONDS delay? (you should start up all witnesses before this many seconds from now)> " opt_delay
 
 echo "Running lua script to generate genesis..."
 if ! lua ../makechain-1.lua ../../../pay2exchange-core/programs/genesis_util/get_dev_key ~/.devel/SECRET/pay2exchange/chain/make-ec2/seed.txt $opt_wit -g ./input2.json $opt_delay  > out.json; then
@@ -64,3 +70,38 @@ if ! lua ../makechain-1.lua ../../../pay2exchange-core/programs/genesis_util/get
 fi
 
 echo "Genesis generation completed successfully. Output written to out.json"
+
+
+chmod g-r,o-r "private.json"
+
+
+echo ; echo "--- save the results ---"
+set -x
+cp -i "private.json" $save_tolocal_private_fn
+cp -i "out.json" $save_tolocal_publicgenesis_fn
+
+cp -i "private.json" "$save_togit_priv_fn"
+cp -i "out.json" "$save_togit_publicgenesis_fn"
+(
+	cd "$save_togit_cwd"
+	git diff
+	git remote -v
+	set +x
+	echo "GOOD to PUBLISH?"
+	read -e -i '' -p "pusht the GENESIS into OUR GIT? (y/n)> " reply
+	if [ "$reply" = "y" ]; then
+		echo "Will push it TO GIT..."
+		sleep 1
+		git commit -a && git push
+	else
+		echo "NOT PUSHING"
+		sleep 1
+	fi
+)
+
+echo "ALl done then?"
+file "$save_tolocal_private_fn"
+file "$save_tolocal_publicgenesis_fn"
+file "$save_togit_priv_fn"
+file "$save_togit_publicgenesis_fn"
+

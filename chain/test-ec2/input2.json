@@ -15,7 +15,7 @@
   "initial_parameters":{
     "maximum_committee_count":1001,
     "current_fees":{
-      "scale":10000,
+      "scale":1000,
       "parameters":[[0,{
             "fee":2000000,
             "price_per_kbyte":1000000
@@ -139,7 +139,7 @@
     "worker_budget_per_day":"50000000"
   },
   "initial_worker_candidates":[],
-  "initial_active_witnesses":1,
+  "initial_active_witnesses":4,
   "initial_assets":[],
   "initial_witness_candidates":[{
       "block_signing_key":"BTS5u8xYyBSBY6PfZ8NX9PVdf5Y1xJJNy6iy4EwmotgR2feZfdPtf",
