@@ -257,6 +257,7 @@ local genesis_map = {
     default = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil },
     p2e1 = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil }, -- the private json is somewhere (todo?)
     ec1  = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
+    ec2  = { genesis = home .. "/chain-p2e/test-genesis-ec2.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec2/private.json" },
     bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
     bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
 }
