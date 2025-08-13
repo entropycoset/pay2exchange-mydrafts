@@ -12,12 +12,13 @@ function help()
 p2e-dev-node1 h    - this shows help and exits
 p2e-dev-node1 d    - delete the run data
 p2e-dev-node1 x    - this starts editing this script here
-p2e-dev-node1 MODE CHAIN ROLE OPTIONS
+p2e-dev-node1 MODE CHAIN ROLE OPTIONS -e EXEC_OPTIONS
 p2e-dev-node1 normal bit node
 p2e-dev-node1 normal ec1 wit01
 p2e-dev-node1 gdb ec1 wit01
 
 OPTIONS: -dry (dry run).
+EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 ]]
 end
 
