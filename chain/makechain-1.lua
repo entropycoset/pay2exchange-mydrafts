@@ -198,12 +198,12 @@ elseif mode == "-g" then
       name = wit,
       owner_key = data.owner_pub,
       owner_key_full = {
-        public_key = data.owner_pub,
+        pub_key = data.owner_pub,
         wif_priv_key = data.owner_priv
       },
       active_key = data.active_pub,
       active_key_full = {
-        public_key = data.active_pub,
+        pub_key = data.active_pub,
         wif_priv_key = data.active_priv
       },
       is_lifetime_member = true
@@ -221,7 +221,7 @@ elseif mode == "-g" then
       owner_name = wit,
       block_signing_key = data.owner_pub,
       block_signing_key_full = {
-        public_key = data.owner_pub,
+        pub_key = data.owner_pub,
         wif_priv_key = data.owner_priv
       }
     })
