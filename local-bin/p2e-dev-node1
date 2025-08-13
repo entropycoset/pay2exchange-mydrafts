@@ -316,7 +316,7 @@ end
 
 -- Construct program arguments
 local prog = "programs/witness_node/witness_node"
-local args = {
+local execargs = {
     "--rpc-endpoint=0.0.0.0:" .. port1,
     "--p2p-endpoint=0.0.0.0:" .. port2,
     "--enable-stale-production",
@@ -328,11 +328,11 @@ if mykey.pub or mykey.priv then
   end
 	local arg_add = string.format('--private-key=["%s", "%s"]', mykey.pub, mykey.priv)
 	print("Creating arg to set private-key: " .. arg_add)
-  table.insert(args, arg_add)
+  table.insert(execargs, arg_add)
 end
 
 if mysettings.witness_id then
-	table.insert(args, '--witness-id="' .. mysettings.witness_id ..  '"')
+	table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..  '"')
 end
 
 -- Check if witness_node is executable
@@ -345,10 +345,10 @@ if not file_is_executable(prog) then
     os.exit(1)
 end
 
-function simple_exec(prog,args)
+function simple_exec(prog,execexecargs)
 	local argv = { [0] = prog }
-	for i = 1, #args do
-		argv[i] = args[i]
+	for i = 1, #execargs do
+		argv[i] = execargs[i]
 	end
 	local pid = posix.fork()
 	if pid == 0 then -- we are the child here
@@ -382,7 +382,7 @@ end -- our show_args()
 for i, v in ipairs(args) do
   print("ARG[" .. i .. "] = " .. v)
 end
-show_args(args)
+show_execargs(execargs)
 
 print("---------------------------------------------------------------------")
 
@@ -393,11 +393,11 @@ for _, v in ipairs(arg) do
 end
 
 run_modes.n = function()
-		simple_exec(prog, args);
+		simple_exec(prog, execargs);
 end
 run_modes.normal = run_modes.n
 run_modes.gdb = function()
-		simple_exec("gdb", {"--args", prog, unpack(args)});
+		simple_exec("gdb", {"--args", prog, unpack(execargs)});
 end
 
 print("---------------------------------------------------------------------")
@@ -413,7 +413,7 @@ print([[
 
 print("Done.")
 print("Was running with args:")
-show_args(args)
+show_args(execargs)
 
 
 
