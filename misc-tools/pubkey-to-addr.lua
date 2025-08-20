@@ -1,14 +1,25 @@
 #!/usr/bin/env lua
--- vibecode
--- script.lua
--- Usage: lua script.lua <BitShares public key>
+-- BitShares Address Generator from Compressed Public Key
 
--- try various crypto backends
-local lib_openssl_digest_ok,        lib_openssl_digest    = pcall(require, "openssl.digest")  -- openssl.digest.new()
-local lib_openssl_shortdigest_ok,   lib_openssl_shortdigest = pcall(require, "openssl")        -- openssl.digest.digest()
-local lib_crypto_ok,                lib_crypto            = pcall(require, "crypto")         -- LuaCrypto
+-- === Constants ===
+local BTS_PREFIX = "BTS"
 
--- wrapper for SHA-256
+-- Load crypto backends
+local lib_openssl_digest_ok, lib_openssl_digest = pcall(require, "openssl.digest")
+local lib_openssl_shortdigest_ok, lib_openssl_shortdigest = pcall(require, "openssl")
+local lib_crypto_ok, lib_crypto = pcall(require, "crypto")
+
+-- Hex dump utility
+local function to_hex(s)
+  if s == nil then
+    return "(nil)"
+  end
+  return (s:gsub(".", function(c)
+    return string.format("%02X ", string.byte(c))
+  end))
+end
+
+-- SHA256 wrapper
 local function easy_sha256(data)
   if lib_openssl_digest_ok then
     local hasher = lib_openssl_digest.new("sha256")
@@ -19,11 +30,11 @@ local function easy_sha256(data)
   elseif lib_crypto_ok then
     return lib_crypto.digest("sha256", data, true)
   else
-    error("No SHA256 implementation found (openssl.digest, openssl.digest.digest or crypto)")
+    error("No SHA256 implementation found")
   end
 end
 
--- wrapper for RIPEMD-160
+-- RIPEMD160 wrapper
 local function easy_ripemd160(data)
   if lib_openssl_digest_ok then
     local hasher = lib_openssl_digest.new("rmd160")
@@ -34,50 +45,18 @@ local function easy_ripemd160(data)
   elseif lib_crypto_ok then
     return lib_crypto.digest("ripemd160", data, true)
   else
-    error("No RIPEMD160 implementation found (openssl.digest, openssl.digest.digest or crypto)")
+    error("No RIPEMD160 implementation found")
   end
 end
 
 -- Base58 alphabet
 local BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
--- decode Base58→bytes
-local function base58_decode(str)
-  local map = {}
-  for i = 1, #BASE58_ALPHABET do
-    map[BASE58_ALPHABET:sub(i, i)] = i - 1
-  end
+-- Base58 encode
+local function base58_encode(data)
   local num = 0
-  for ch in str:gmatch(".") do
-    local v = map[ch]
-    assert(v ~= nil, "Invalid Base58 char: " .. ch)
-    num = num * 58 + v
-  end
-  local bytes = {}
-  while num > 0 do
-    table.insert(bytes, 1, string.char(num % 256))
-    num = math.floor(num / 256)
-  end
-  -- leading‐zero support
-  for i = 1, #str do
-    if str:sub(i, i) == "1" then
-      table.insert(bytes, 1, "\0")
-    else
-      break
-    end
-  end
-  return table.concat(bytes)
-end
-
--- Base58Check encode (version byte + payload → Base58Check)
-local function base58check_encode(version, payload)
-  local data     = string.char(version) .. payload
-  local checksum = easy_sha256(easy_sha256(data)):sub(1, 4)
-  local full     = data .. checksum
-
-  local num = 0
-  for i = 1, #full do
-    num = num * 256 + full:byte(i)
+  for i = 1, #data do
+    num = num * 256 + data:byte(i)
   end
   local result = {}
   while num > 0 do
@@ -86,8 +65,8 @@ local function base58check_encode(version, payload)
     table.insert(result, 1, BASE58_ALPHABET:sub(rem + 1, rem + 1))
   end
   -- leading zeros
-  for i = 1, #full do
-    if full:byte(i) == 0 then
+  for i = 1, #data do
+    if data:byte(i) == 0 then
       table.insert(result, 1, "1")
     else
       break
@@ -96,32 +75,42 @@ local function base58check_encode(version, payload)
   return table.concat(result)
 end
 
--- Base58Check decode (verifies checksum)
-local function base58check_decode(str)
-  local raw = base58_decode(str)
-  assert(#raw > 4, "Invalid data length")
-  local data, csum = raw:sub(1, -5), raw:sub(-4)
-  local csum_here = easy_sha256(easy_sha256(data))
-  local ok = (csum_here:sub(1, 4) == csum)	
+-- BitShares address generation
+local function generate_bitshares_address(pubkey_bytes)
+  assert(#pubkey_bytes == 33, "Expected 33-byte compressed public key")
 
-  assert(ok, string.format("Bad checksum in [%s] got raw [%s] so the csum is [%s] but calculated checksum of data is [%s]", str,raw, csum, csum_here))
-  return data
+  local ripemd = easy_ripemd160(pubkey_bytes)
+  local checksum = ripemd:sub(1, 4)
+  local address_bytes = pubkey_bytes .. checksum
+  local base58_address = base58_encode(address_bytes)
+
+  return BTS_PREFIX .. base58_address
 end
 
--- main
-local pubkey_base58 = arg[1]
-if not pubkey_base58 then
-  io.stderr:write("Usage: lua script.lua <BTS public key>\n")
+-- Convert hex string to binary
+local function hex_to_bytes(hex)
+  print(hex)
+  return (hex:gsub("..", function(cc)
+    return string.char(tonumber(cc, 16))
+  end))
+end
+
+-- === Main ===
+local pubkey_arg = arg[1]
+if not pubkey_arg then
+  io.stderr:write("Usage: lua script.lua <compressed_pubkey_hex or BTS...>\n")
   os.exit(1)
 end
 
--- decode version + key, strip version byte (0x25)
-local decoded_bytes   = base58check_decode(pubkey_base58)
-local compressed_pk   = decoded_bytes:sub(2)
+-- If input starts with the BTS prefix, strip it
+if pubkey_arg:sub(1, #BTS_PREFIX) == BTS_PREFIX then
+  pubkey_arg = pubkey_arg:sub(#BTS_PREFIX + 1)
+end
 
--- RIPEMD-160 then Base58Check with version 56
-local ripemd_hash = easy_ripemd160(compressed_pk)
-local address     = base58check_encode(56, ripemd_hash)
+-- At this stage, pubkey_arg should be a hex string for the compressed public key
+local pubkey_bytes = hex_to_bytes(pubkey_arg)
+local address = generate_bitshares_address(pubkey_bytes)
 
+print("BitShares Address:")
 print(address)
 
