@@ -1,6 +1,6 @@
-local ffi  = require("ffi")
-local bit  = require("bit")
-local C    = ffi.C
+local ffi = require("ffi")
+local bit = require("bit")
+local C   = ffi.C
 
 ffi.cdef[[
 typedef int pid_t;
@@ -55,7 +55,7 @@ typedef void (*sighandler_t)(int);
 sighandler_t signal(int signum, sighandler_t handler);
 ]]
 
--- Constants (define in Lua, NOT inside cdef)
+-- Lua constants
 local TCSANOW   = 0
 local WNOHANG   = 1
 local SIGINT    = 2
@@ -69,7 +69,10 @@ local TIOCSCTTY  = 0x540E
 local TIOCGWINSZ = 0x5413
 local TIOCSWINSZ = 0x5414
 
--- Build a C argv[] that stays alive
+-- maximum buffer size to avoid runaway memory usage
+local MAX_BUF_SIZE = 1024*1024 -- 1 MB
+
+-- build a C argv that stays alive
 local function build_argv(list)
   local n = #list
   local arr = ffi.new("char *[?]", n + 1)
@@ -85,142 +88,184 @@ local function build_argv(list)
   return arr, keep
 end
 
--- Return child's exit code from wait status
 local function exit_code_from_status(st)
-  -- POSIX: if exited normally, (st >> 8) & 0xff
   return bit.band(bit.rshift(st, 8), 0xff)
 end
 
 local function simple_exec(cmd, args, _ignored)
   args = args or {}
 
-  -- Force unbuffered child I/O
   local argv_list = { "stdbuf", "-o0", "-e0", cmd }
   for i = 1, #args do argv_list[#argv_list+1] = args[i] end
   local argv, _keep = build_argv(argv_list)
 
-  -- Create PTY
   local master = ffi.new("int[1]")
   local slave  = ffi.new("int[1]")
   if C.openpty(master, slave, nil, nil, nil) ~= 0 then
     error("openpty failed")
   end
 
-  -- Save our terminal; set our stdin raw so we forward bytes immediately
   local saved = ffi.new("struct termios[1]")
   local have_saved = (C.tcgetattr(0, saved) == 0)
   local raw = ffi.new("struct termios[1]")
   if have_saved then
     raw[0] = saved[0]
     C.cfmakeraw(raw)
-    C.tcsetattr(0, TCSANOW, raw)
+    if C.tcsetattr(0, TCSANOW, raw) ~= 0 then
+      C.close(master[0]); C.close(slave[0])
+      error("tcsetattr(raw) failed")
+    end
   end
 
-  -- Parent ignores SIGINT; child (on slave PTY) will receive ^C
   local SIG_IGN = ffi.cast("sighandler_t", 1)
   local old_sigint = C.signal(SIGINT, SIG_IGN)
+  local child_pid
 
-  local pid = C.fork()
-  if pid < 0 then
-    if have_saved then C.tcsetattr(0, TCSANOW, saved) end
-    C.signal(SIGINT, old_sigint)
-    error("fork failed")
-  elseif pid == 0 then
-    -- ---- Child ----
-    C.close(master[0])
-
-    -- New session + give slave PTY as controlling terminal
-    C.setsid()
-    C.ioctl(slave[0], TIOCSCTTY, 0)
-
-    -- Propagate our current window size
-    local ws = ffi.new("struct winsize[1]")
-    if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
-      C.ioctl(slave[0], TIOCSWINSZ, ws)
+  -- robust cleanup function for TTY, signals, and child process
+  local cleanup
+  cleanup = function(msg, already_in_error)
+    -- kill child if exists
+    if child_pid and child_pid > 0 then
+      pcall(C.kill, child_pid, SIGINT)
+      local st = ffi.new("int[1]")
+      pcall(C.waitpid, child_pid, st, WNOHANG)
     end
-
-    -- stdio -> slave
-    C.dup2(slave[0], 0)
-    C.dup2(slave[0], 1)
-    C.dup2(slave[0], 2)
-    C.close(slave[0])
-
-    -- Child gets default SIGINT
-    local SIG_DFL = ffi.cast("sighandler_t", 0)
-    C.signal(SIGINT, SIG_DFL)
-
-    C.execvp(argv[0], argv)
-    -- If exec fails:
-    os.exit(127)
+    -- restore terminal
+    if have_saved then
+      pcall(C.tcsetattr, 0, TCSANOW, saved)
+    end
+    -- restore SIGINT
+    if old_sigint then
+      pcall(C.signal, SIGINT, old_sigint)
+    end
+    -- report message if provided
+    if msg then
+      if already_in_error then
+        io.stderr:write("simple_exec error: ", msg, "\n")
+      else
+        error(msg)
+      end
+    end
   end
 
-  -- ---- Parent ----
-  C.close(slave[0])
+  local ok, err = xpcall(function()
+    local pid = C.fork()
+    if pid < 0 then cleanup("fork failed") end
+    if pid == 0 then
+      -- Child process
+      C.close(master[0])
+      C.setsid()
+      if C.ioctl(slave[0], TIOCSCTTY, 0) ~= 0 then os.exit(127) end
+      -- propagate window size
+      local ws = ffi.new("struct winsize[1]")
+      if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
+        C.ioctl(slave[0], TIOCSWINSZ, ws)
+      end
+      C.dup2(slave[0], 0)
+      C.dup2(slave[0], 1)
+      C.dup2(slave[0], 2)
+      C.close(slave[0])
+      local SIG_DFL = ffi.cast("sighandler_t", 0)
+      C.signal(SIGINT, SIG_DFL)
+      C.execvp(argv[0], argv)
+      os.exit(127)
+    end
 
-  -- handle SIGWINCH to update child terminal size dynamically
-  local ws = ffi.new("struct winsize[1]")
-  local function resize()
+    child_pid = pid
+    C.close(slave[0])
+
+    local ws = ffi.new("struct winsize[1]")
+    local winch_pending = false
+    local function sigwinch_handler(signum)
+      winch_pending = true
+    end
+    C.signal(SIGWINCH, ffi.cast("sighandler_t", sigwinch_handler))
+    -- initial resize
     if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
       C.ioctl(master[0], TIOCSWINSZ, ws)
     end
-  end
-  C.signal(SIGWINCH, ffi.cast("sighandler_t", resize))
 
-  -- poll() both stdin (0) and PTY master
-  local pfds = ffi.new("struct pollfd[2]")
-  pfds[0].fd = 0;          pfds[0].events = POLLIN
-  pfds[1].fd = master[0];  pfds[1].events = POLLIN
+    local pfds = ffi.new("struct pollfd[2]")
+    pfds[0].fd = 0;          pfds[0].events = POLLIN
+    pfds[1].fd = master[0];  pfds[1].events = POLLIN
 
-  local buf = ffi.new("uint8_t[65536]")
+    -- enforce maximum buffer size
+    local buf_size = 65536
+    if buf_size > MAX_BUF_SIZE then
+        cleanup(("buffer size %d exceeds maximum %d"):format(buf_size, MAX_BUF_SIZE))
+    end
+    local buf = ffi.new("uint8_t[?]", buf_size)
 
-  local child_alive = true
-  local exit_status = 0
+    local child_alive = true
+    local exit_status = 0
 
-  while child_alive do
-    local pret = C.poll(pfds, 2, -1)
-    if pret < 0 then break end
+    while child_alive do
+      local pret = C.poll(pfds, 2, -1)
+      if pret < 0 then cleanup("poll failed") end
 
-    -- From child -> to our stdout
-    if bit.band(pfds[1].revents, bit.bor(POLLIN, bit.bor(POLLERR, POLLHUP))) ~= 0 then
-      local n = C.read(master[0], buf, 65536)
-      if n > 0 then
-        C.write(1, buf, n)
-      else
-        -- EOF/HUP
+      -- handle SIGWINCH deferred
+      if winch_pending then
+        winch_pending = false
+        if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
+          C.ioctl(master[0], TIOCSWINSZ, ws)
+        end
+      end
+
+      -- from child -> stdout
+      if bit.band(pfds[1].revents, bit.bor(POLLIN, bit.bor(POLLERR, POLLHUP))) ~= 0 then
+        local n = C.read(master[0], buf, buf_size)
+        if n < 0 then cleanup("read(master) failed") end
+        if n > MAX_BUF_SIZE then cleanup(("child output exceeded max buffer %d bytes"):format(MAX_BUF_SIZE)) end
+        if n == 0 then
+          child_alive = false
+        else
+          local written = 0
+          while written < n do
+            local w = C.write(1, buf + written, n - written)
+            if w <= 0 then cleanup("write(stdout) failed") end
+            written = written + w
+          end
+        end
+      end
+
+      -- from stdin -> child
+      if bit.band(pfds[0].revents, POLLIN) ~= 0 then
+        local n = C.read(0, buf, buf_size)
+        if n < 0 then cleanup("read(stdin) failed") end
+        if n > MAX_BUF_SIZE then cleanup(("stdin read exceeded max buffer %d bytes"):format(MAX_BUF_SIZE)) end
+        if n > 0 then
+          local written = 0
+          while written < n do
+            local w = C.write(master[0], buf + written, n - written)
+            if w <= 0 then cleanup("write(master) failed") end
+            written = written + w
+          end
+        end
+      end
+
+      local st = ffi.new("int[1]")
+      local w = C.waitpid(child_pid, st, WNOHANG)
+      if w == child_pid then
+        exit_status = st[0]
         child_alive = false
       end
     end
 
-    -- From our keyboard -> to child
-    if bit.band(pfds[0].revents, POLLIN) ~= 0 then
-      local n = C.read(0, buf, 65536)
-      if n > 0 then
-        C.write(master[0], buf, n)
-      end
-    end
-
-    -- Non-blocking reap
     local st = ffi.new("int[1]")
-    local w = C.waitpid(pid, st, WNOHANG)
-    if w == pid then
-      exit_status = st[0]
-      child_alive = false
-    end
+    C.waitpid(child_pid, st, 0)
+    if st[0] ~= 0 then exit_status = st[0] end
+
+    return exit_code_from_status(exit_status)
+  end, function(err)
+    cleanup(err, true)
+  end)
+
+  if not ok then
+    cleanup(err, true)
   end
 
-  -- Final reap in case we missed it
-  local st = ffi.new("int[1]")
-  C.waitpid(pid, st, 0)
-  if st[0] ~= 0 then exit_status = st[0] end
-
-  -- Cleanup/restore
-  C.close(master[0])
-  if have_saved then C.tcsetattr(0, TCSANOW, saved) end
-  C.signal(SIGINT, old_sigint)
-
-  return exit_code_from_status(exit_status)
+  return ok
 end
 
 return { simple_exec = simple_exec }
-
 
