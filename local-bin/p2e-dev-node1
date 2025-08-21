@@ -345,7 +345,7 @@ function main_start_node(given_arg)
 		if is_executable("./showargs") then
 				print("-------------------")
 				print("Arguments for program, as printed by a dummy program:")
-				simple_exec("./showargs", args)
+				mylib_simpleexec.simple_exec("./showargs", args)
 				print("-------------------")
 		end -- if binary showargs
 	end -- our show_args()
