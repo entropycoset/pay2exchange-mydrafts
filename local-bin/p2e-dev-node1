@@ -94,9 +94,6 @@ local	extract_keys_jsonfile -- (json_fn, target_name)
 
 local json = require("dkjson")  -- requires dkjson (https://github.com/LuaDist/dkjson)
 
--- You can hardcode the name here or pass via argument
-local target_name = "wit01"
-
 -- Load JSON from file or stdin
 local function read_file(filename)
     local file = io.open(filename, "r")
@@ -142,10 +139,12 @@ end
 
 ---------------------------------------------------------------------
 
+function main_start_node(given_arg)
+	given_arg = given_arg or {}
 
-local cfg_mode = arg[1] or "normal"
-local cfg_chain = arg[2] or "default"
-local cfg_role = arg[3] or "node"
+local cfg_mode = given_arg[1] or "normal"
+local cfg_chain = given_arg[2] or "default"
+local cfg_role = given_arg[3] or "node"
 
 print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain .. " ; our role: " .. cfg_role)
 
@@ -383,6 +382,8 @@ run_modes.normal = run_modes.n
 run_modes.gdb = function()
 		simple_exec("gdb", {"--args", prog, unpack(execargs)});
 end
+run_modes.net1 = function()
+end
 
 print("---------------------------------------------------------------------")
 if run_modes[cfg_mode] then
@@ -400,6 +401,9 @@ print("Was running with args:")
 show_args(execargs)
 
 
+end
+
+main_start_node(arg)
 
 
 
