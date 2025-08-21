@@ -39,7 +39,7 @@ local TCSANOW, WNOHANG, SIGINT, SIGWINCH = 0, 1, 2, 28
 local POLLIN, POLLERR, POLLHUP = 0x0001, 0x0008, 0x0010
 local TIOCSCTTY, TIOCGWINSZ, TIOCSWINSZ = 0x540E, 0x5413, 0x5414
 local MAX_BUF_SIZE = 1024*1024
-local EINTR = 4
+local EINTR, EAGAIN, EIO = 4, 11, 5  -- errno codes
 
 local function build_argv(list)
   local n = #list
@@ -63,7 +63,7 @@ end
 local function simple_exec(cmd,args,_ignored)
   args = args or {}
 
-  -- preserve colors: set TERM
+  -- preserve colors
   C.setenv("TERM", "xterm-256color", 1)
 
   local argv_list = { cmd }
@@ -140,7 +140,10 @@ local function simple_exec(cmd,args,_ignored)
     local exit_status=0
 
     while child_alive do
-      local pret = C.poll(pfds,2,-1)
+      local pret
+      repeat
+        pret = C.poll(pfds,2,-1)
+      until pret>=0 or ffi.errno() ~= EINTR
       if pret<0 then cleanup("poll failed") end
 
       if winch_pending then
@@ -151,43 +154,49 @@ local function simple_exec(cmd,args,_ignored)
       -- from child -> stdout
       if bit.band(pfds[1].revents, bit.bor(POLLIN, bit.bor(POLLERR,POLLHUP)))~=0 then
         while true do
-          local n = C.read(master[0],buf,buf_size)
-          if n<0 then
-            if ffi.errno()==EINTR then -- ignore Ctrl-C interrupt
-            else cleanup("read(master) failed") end
-          elseif n==0 then child_alive=false; break
-          else
-            local written=0
-            while written<n do
-              local w=C.write(1,buf+written,n-written)
-              if w<0 then
-                if ffi.errno()==EINTR then -- retry
-                else cleanup("write(stdout) failed") end
-              elseif w>0 then written=written+w end
-            end
-            break
+          local n
+          repeat
+            n = C.read(master[0],buf,buf_size)
+          until n >= 0 or (n<0 and ffi.errno() ~= EINTR and ffi.errno() ~= EAGAIN)
+          if n < 0 then
+            if ffi.errno() == EIO then child_alive=false; break end  -- PTY closed, normal EOF
+            cleanup("read(master) failed")
           end
+          if n==0 then child_alive=false; break end
+
+          local written=0
+          while written<n do
+            local w
+            repeat
+              w = C.write(1,buf+written,n-written)
+            until w>0 or (w<0 and ffi.errno() ~= EINTR and ffi.errno() ~= EAGAIN)
+            if w<0 then cleanup("write(stdout) failed") end
+            written=written+w
+          end
+          break
         end
       end
 
       -- from stdin -> child
       if bit.band(pfds[0].revents,POLLIN)~=0 then
         while true do
-          local n=C.read(0,buf,buf_size)
-          if n<0 then
-            if ffi.errno()==EINTR then
-            else cleanup("read(stdin) failed") end
-          elseif n>0 then
-            local written=0
-            while written<n do
-              local w=C.write(master[0],buf+written,n-written)
-              if w<=0 then
-                if ffi.errno()==EINTR then
-                else cleanup("write(master) failed") end
-              else written=written+w end
-            end
-            break
-          else break end
+          local n
+          repeat
+            n = C.read(0,buf,buf_size)
+          until n>=0 or (n<0 and ffi.errno() ~= EINTR and ffi.errno() ~= EAGAIN)
+          if n<0 then cleanup("read(stdin) failed") end
+          if n==0 then break end
+
+          local written=0
+          while written<n do
+            local w
+            repeat
+              w = C.write(master[0],buf+written,n-written)
+            until w>0 or (w<0 and ffi.errno() ~= EINTR and ffi.errno() ~= EAGAIN)
+            if w<0 then cleanup("write(master) failed") end
+            written=written+w
+          end
+          break
         end
       end
 
@@ -207,8 +216,11 @@ local function simple_exec(cmd,args,_ignored)
   end,function(err) cleanup(err,true) end)
 
   if not ok then cleanup(err,true) end
+  cleanup(nil,false) -- no error, not in error - just normal cleanup after the exec success (end)
   return ok
 end
 
 return { simple_exec = simple_exec }
+
+
 
