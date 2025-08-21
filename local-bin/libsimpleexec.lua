@@ -1,132 +1,92 @@
--- ffi_simple_exec.lua
-
 local ffi = require("ffi")
 local bit = require("bit")
 
+-- Define minimal C functions and types
 ffi.cdef[[
-// types & constants
-  typedef int         pid_t;
-  typedef unsigned long sigset_t;
-  enum {
-    STDIN_FILENO = 0,
-    SIGINT       = 2,
-    SIGTSTP      = 20,
-    SIGTTOU      = 22,
-    SA_RESTART   = 0x10000000,
-    SIG_IGN      = 1          // define the ignore‐signal handler constant
-  };
+typedef int pid_t;
 
-// process control
-  pid_t fork(void);
-  int   setpgid(pid_t pid, pid_t pgid);
-  pid_t getpid(void);
-
-// terminal control
-  pid_t tcgetpgrp(int fd);
-  int   tcsetpgrp(int fd, pid_t pgrp);
-
-// exec & wait
-  int   execvp(const char *file, char *const argv[]);
-  pid_t waitpid(pid_t pid, int *status, int options);
-  void  _exit(int status);
-
-// simple signal(2) & kill(2)
-  typedef void (*sighandler_t)(int);
-  sighandler_t signal(int signum, sighandler_t handler);
-  int          kill(pid_t pid, int sig);
-
-// errno
-  extern int errno;
+pid_t fork(void);
+int execvp(const char *file, char *const argv[]);
+pid_t waitpid(pid_t pid, int *status, int options);
+int tcsetpgrp(int fd, pid_t pgrp);
+pid_t getpid(void);
+pid_t getpgrp(void);
+int tcgetpgrp(int fd);
+typedef void (*sighandler_t)(int);
+sighandler_t signal(int signum, sighandler_t handler);
 ]]
 
--- waitpid‐status decoding
-local function WIFEXITED(s)   return bit.band(s,0x7f)==0 end
-local function WEXITSTATUS(s) return bit.rshift(bit.band(s,0xff00),8) end
-local function WIFSIGNALED(s) return bit.band(s,0x7f)~=0 and bit.band(s,0x7f)~=0x7f end
-local function WTERMSIG(s)    return bit.band(s,0x7f) end
+local C = ffi.C
 
--- keep callbacks alive
-local _anchors = {}
+-- Define SIGINT, SIG_IGN, SIG_DFL manually if not defined
+local SIGINT = 2
+local SIG_IGN = ffi.cast("sighandler_t", 1) -- typical value
+local SIG_DFL = ffi.cast("sighandler_t", 0) -- typical value
 
-local function simple_exec(prog, args, to_front)
-  to_front = not not to_front
+-- Anchor signal handlers to prevent GC
+local anchored_handlers = {
+    SIG_IGN = SIG_IGN,
+    SIG_DFL = SIG_DFL
+}
 
-  -- build NULL‐terminated argv
-  local argc = #args + 1
-  local argv = ffi.new("const char *[?]", argc+1)
-  argv[0] = prog
-  for i=1,#args do argv[i] = args[i] end
-  argv[argc] = nil
-
-  -- save parent’s fg pgrp
-  local parent_pgrp
-  if to_front then
-    parent_pgrp = ffi.C.tcgetpgrp(0)
-  end
-
-  -- fork
-  local pid = ffi.C.fork()
-  if pid == 0 then
-    -- Child
-    if to_front then
-      if ffi.C.setpgid(0,0) < 0 then
-        io.stderr:write("setpgid failed: ", ffi.errno(), "\n")
-        ffi.C._exit(127)
-      end
-      ffi.C.tcsetpgrp(0, ffi.C.getpid())
+-- Helper: convert Lua args to C char* array
+local function make_argv(args)
+    local argv = ffi.new("char *[?]", #args + 1)
+    for i, v in ipairs(args) do
+        argv[i-1] = ffi.cast("char *", v)
     end
+    argv[#args] = nil
+    return argv
+end
 
-    ffi.C.execvp(prog,
-      ffi.cast("char *const *", argv)
-    )
-    io.stderr:write("execvp failed: ", ffi.errno(), "\n")
-    ffi.C._exit(127)
-  end
+-- simple_exec(cmd, args, ignored)
+local function simple_exec(cmd, args, _ignored)
+    args = args or {}
+    table.insert(args, 1, cmd)
+    local argv = make_argv(args)
 
-  -- Parent: set up signal handling & terminal hand‐off
-  local old_int, old_tstp, old_ttou
-
-  if to_front then
-    -- ignore SIGTTOU so parent isn’t stopped when we tcsetpgrp()
-    old_ttou = ffi.C.signal(ffi.C.SIGTTOU,
-                   ffi.cast("sighandler_t", ffi.C.SIG_IGN)
-                 )
-
-    -- forward SIGINT & SIGTSTP to child
-    local cb = ffi.cast("sighandler_t", function(sig)
-      ffi.C.kill(pid, sig)
+    -- save parent terminal foreground
+    local parent_fg = 0
+    pcall(function()
+        parent_fg = C.tcgetpgrp(0)
     end)
-    _anchors[#_anchors+1] = cb
 
-    old_int  = ffi.C.signal(ffi.C.SIGINT,  cb)
-    old_tstp = ffi.C.signal(ffi.C.SIGTSTP, cb)
+    local pid = C.fork()
+    if pid < 0 then
+        error("fork failed")
+    elseif pid == 0 then
+        -- child process
+        -- give child foreground terminal if possible
+        pcall(function() C.tcsetpgrp(0, C.getpid()) end)
+        -- restore default SIGINT in child
+        C.signal(SIGINT, anchored_handlers.SIG_DFL)
+        -- execute command
+        C.execvp(cmd, argv)
+        ffi.C._exit(127) -- exec failed
+    else
+        -- parent process
+        -- ignore SIGINT to prevent Lua script dying
+        local old_handler = C.signal(SIGINT, anchored_handlers.SIG_IGN)
 
-    -- ensure child pgid then give it the terminal
-    ffi.C.setpgid(pid, pid)
-    ffi.C.tcsetpgrp(0, pid)
-  end
+        -- optionally set child as foreground (best effort)
+        pcall(function() C.tcsetpgrp(0, pid) end)
 
-  -- wait for child
-  local st = ffi.new("int[1]")
-  ffi.C.waitpid(pid, st, 0)
-  local status = st[0]
+        -- wait for child to exit
+        local status = ffi.new("int[1]")
+        C.waitpid(pid, status, 0)
 
-  -- restore terminal & handlers
-  if to_front then
-    ffi.C.tcsetpgrp(0, parent_pgrp or ffi.C.getpid())
-    ffi.C.signal(ffi.C.SIGINT,  old_int)
-    ffi.C.signal(ffi.C.SIGTSTP, old_tstp)
-    ffi.C.signal(ffi.C.SIGTTOU, old_ttou)
-  end
+        -- restore terminal foreground
+        pcall(function()
+            if parent_fg ~= 0 then
+                C.tcsetpgrp(0, parent_fg)
+            end
+        end)
 
-  -- print exit status
-  if WIFEXITED(status) then
-    print(("Child exited with code %d"):format(WEXITSTATUS(status)))
-  elseif WIFSIGNALED(status) then
-    print(("Child killed by signal %d"):format(WTERMSIG(status)))
-  else
-    print(("Child ended with status 0x%x"):format(status))
-  end
+        -- restore original SIGINT handler
+        C.signal(SIGINT, old_handler)
+
+        return bit.rshift(status[0], 8)
+    end
 end
 
 return { simple_exec = simple_exec }
