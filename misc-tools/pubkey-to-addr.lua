@@ -108,19 +108,67 @@ local function base58_decode(str)
   return table.concat(bytes)
 end
 
--- Base58 encode
+-- Base58 encode using string arithmetic for large numbers
 local function base58_encode(data)
-  local num = 0
-  for i = 1, #data do num = num * 256 + data:byte(i) end
-  local res = {}
-  while num > 0 do
-    local rem = num % 58
-    num = math.floor(num / 58)
-    table.insert(res, 1, BASE58_ALPHABET:sub(rem+1, rem+1))
-  end
+  if #data == 0 then return "" end
+  
+  -- Convert bytes to decimal string
+  local num_str = "0"
   for i = 1, #data do
-    if data:byte(i) == 0 then table.insert(res, 1, "1") else break end
+    -- Multiply by 256 and add current byte
+    local byte_val = data:byte(i)
+    local carry = byte_val
+    local new_num = {}
+    
+    -- Multiply existing number by 256
+    for j = #num_str, 1, -1 do
+      local digit = tonumber(num_str:sub(j,j))
+      local product = digit * 256 + carry
+      table.insert(new_num, 1, tostring(product % 10))
+      carry = math.floor(product / 10)
+    end
+    
+    -- Add remaining carry digits
+    while carry > 0 do
+      table.insert(new_num, 1, tostring(carry % 10))
+      carry = math.floor(carry / 10)
+    end
+    
+    num_str = table.concat(new_num)
+    if num_str == "" then num_str = "0" end
   end
+  
+  -- Convert decimal string to base58
+  local res = {}
+  while num_str ~= "0" do
+    local remainder = 0
+    local new_num = {}
+    
+    -- Divide by 58
+    for i = 1, #num_str do
+      local digit = tonumber(num_str:sub(i,i))
+      local current = remainder * 10 + digit
+      local quotient = math.floor(current / 58)
+      if #new_num > 0 or quotient > 0 then
+        table.insert(new_num, tostring(quotient))
+      end
+      remainder = current % 58
+    end
+    
+    table.insert(res, 1, BASE58_ALPHABET:sub(remainder + 1, remainder + 1))
+    num_str = table.concat(new_num)
+    if num_str == "" then num_str = "0" end
+  end
+  
+  -- Add leading '1's for leading zero bytes
+  for i = 1, #data do
+    if data:byte(i) == 0 then
+      table.insert(res, 1, "1")
+    else
+      break
+    end
+  end
+  
   return table.concat(res)
 end
 
