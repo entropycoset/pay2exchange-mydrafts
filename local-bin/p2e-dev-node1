@@ -1,5 +1,4 @@
-#!/usr/bin/env lua
--- make.lua
+#!/usr/bin/env luajit
 -- Copyrighted (C) 2025 EntropyCoset on BSD 2-clause licence, also released as Public Domain
 
 local lfs = require("lfs")
