@@ -142,263 +142,263 @@ end
 function main_start_node(given_arg)
 	given_arg = given_arg or {}
 
-local cfg_mode = given_arg[1] or "normal"
-local cfg_chain = given_arg[2] or "default"
-local cfg_role = given_arg[3] or "node"
+	local cfg_mode = given_arg[1] or "normal"
+	local cfg_chain = given_arg[2] or "default"
+	local cfg_role = given_arg[3] or "node"
 
-print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain .. " ; our role: " .. cfg_role)
+	print("Mode of this script: " .. cfg_mode .. " ; Blockchain/genesis: " .. cfg_chain .. " ; our role: " .. cfg_role)
 
--- Special edit mode
-if cfg_mode == "x" then
-    local script = debug.getinfo(1).source:sub(2) -- get current script path
-    os.execute("vim " .. script)
-    print("After editing myself - exit")
-    os.exit()
-end
-if cfg_mode == "h" then
-	help()
-	os.exit()
-end
+	-- Special edit mode
+	if cfg_mode == "x" then
+			local script = debug.getinfo(1).source:sub(2) -- get current script path
+			os.execute("vim " .. script)
+			print("After editing myself - exit")
+			os.exit()
+	end
+	if cfg_mode == "h" then
+		help()
+		os.exit()
+	end
 
-print([[
-=====================================================================
-]])
+	print([[
+	=====================================================================
+	]])
 
--- Compile showargs if not present
-local function file_exists(path)
-    local f = io.open(path, "r")
-    if f then f:close() return true else return false end
-end
+	-- Compile showargs if not present
+	local function file_exists(path)
+			local f = io.open(path, "r")
+			if f then f:close() return true else return false end
+	end
 
-local function is_executable(path)
-    return os.execute('[ -x "' .. path .. '" ]') == 0
-end
+	local function is_executable(path)
+			return os.execute('[ -x "' .. path .. '" ]') == 0
+	end
 
-if not is_executable("./showargs") then
-    if file_exists("./showargs.cpp") then
-        local res = os.execute("g++ showargs.cpp -o showargs")
-        if res ~= 0 then print("Cannot compile showargs") end
-    end
-end
+	if not is_executable("./showargs") then
+			if file_exists("./showargs.cpp") then
+					local res = os.execute("g++ showargs.cpp -o showargs")
+					if res ~= 0 then print("Cannot compile showargs") end
+			end
+	end
 
--- good_rand() - safely generate random int in range
-local function good_rand(max)
-    local max_limit = 4294967296 - 2
-    if max >= max_limit then
-        io.stderr:write("ERROR: max value (" .. max .. ") exceeds 32bit limit (" .. max_limit .. ")\n")
-        os.exit(1)
-    end
-    local handle = io.popen("od -An -N4 -tu4 < /dev/urandom")
-    local rnd = tonumber(handle:read("*a"):match("%d+"))
-    handle:close()
-    return rnd % (max + 1)
-end
-
-print("Cleanup of old run data (delete / remove)")
-os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
-if cfg_mode == "d" then
-	print("Removed - done, exiting")
-	os.exit()
-end
-
--- Generate random ports
-local r1 = good_rand(970)
-local port1 = r1 + 1025
-local port2 = port1 + 1
-
-print("port1=" .. port1 .. " port2=" .. port2)
-
-local home = os.getenv("HOME")
-
--- Determine genesis file
-local genesis_map = {
-    default = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil },
-    p2e1 = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil }, -- the private json is somewhere (todo?)
-    ec1  = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
-    ec2  = { genesis = home .. "/chain-p2e/test-genesis-ec2.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec2/private.json" },
-    bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
-    bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
-}
-local genesis_fn = genesis_map[cfg_chain].genesis
-local genesis_fn_private = genesis_map[cfg_chain].private
-
-if not genesis_map[cfg_chain] then
-    print("Unknown chain: " .. cfg_chain)
-end
-
-print("Genesis filename: " .. genesis_fn)
-
--- Load secret
-local mykey = { pub = nil, priv = nil }
-local mysettings = { witness_id = nil }
-
-if cfg_role == "one" then -- the old way
-	mykey.pub = "BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9"
-	local privkey1_fullfn = home .. "/.devel/SECRET/pay2exchange/" .. mykey.pub .. ".secret"
-	local privkey1_secret = ""
-	if not file_exists(privkey1_fullfn) then
-			print("Cannot read secret file (" .. privkey1_fullfn .. "). Aborting.")
-			os.exit(1)
-	else
-			local file = io.open(privkey1_fullfn, "r")
-			local line = file:read("*l")
-			file:close()
-			if not line:match("^[%w]+$") then
-					print("The data read does not look correct. Aborting.")
+	-- good_rand() - safely generate random int in range
+	local function good_rand(max)
+			local max_limit = 4294967296 - 2
+			if max >= max_limit then
+					io.stderr:write("ERROR: max value (" .. max .. ") exceeds 32bit limit (" .. max_limit .. ")\n")
 					os.exit(1)
-			else
-					privkey1_secret = line
-					print("Read secret key.")
-					mykey.priv = privkey1_secret
-					mysettings.witness_id = '1.6.1'
 			end
+			local handle = io.popen("od -An -N4 -tu4 < /dev/urandom")
+			local rnd = tonumber(handle:read("*a"):match("%d+"))
+			handle:close()
+			return rnd % (max + 1)
 	end
-elseif begins_with(cfg_role, "wit") then
-	wit=cfg_role
-	print("You are a witness (" .. wit .. ")")
-	if not genesis_fn_private then
-		error("You attempt to have role of a witness, but we do not have genesis-private. wrong chain? chain is: " .. cfg_chain)
+
+	print("Cleanup of old run data (delete / remove)")
+	os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
+	if cfg_mode == "d" then
+		print("Removed - done, exiting")
+		os.exit()
 	end
-	local wit_num_str = wit:match("^wit(%d+)$")
-	local wit_num = tonumber(wit_num_str)
-	print("You are a witness number: " .. wit_num)
-	mysettings.witness_id = '1.6.' .. tostring(wit_num)
-	mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
-elseif begins_with(cfg_role, "node") then
-	print("You are just a node (not a witness - not loading wit privkey)")
-else
-	print("Unknown role (" .. cfg_role .. ")")
-	os.exit(1)
-end
 
--- Construct program arguments
-local prog = "programs/witness_node/witness_node"
-local execargs = {
-    "--rpc-endpoint=0.0.0.0:" .. port1,
-    "--p2p-endpoint=0.0.0.0:" .. port2,
-    "--enable-stale-production",
-    "--genesis-json=" .. genesis_fn
-}
-if mykey.pub or mykey.priv then
-  if not (mykey.pub and mykey.priv) then
-    error("If you set mykey then set all of it.")
-  end
-	local arg_add = string.format('--private-key=["%s", "%s"]', mykey.pub, mykey.priv)
-	print("Creating arg to set private-key: " .. arg_add)
-  table.insert(execargs, arg_add)
-end
+	-- Generate random ports
+	local r1 = good_rand(970)
+	local port1 = r1 + 1025
+	local port2 = port1 + 1
 
-if mysettings.witness_id then
-	table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..  '"')
-end
+	print("port1=" .. port1 .. " port2=" .. port2)
 
--- pass extra execargs -e
-local function args_after_e(args)
-	local found = false
-	local result = {}
-	local found_ix = 0
-	for ix, v in pairs(args) do
-		if found then
-			if ix > found_ix then
-				table.insert(result, v)
+	local home = os.getenv("HOME")
+
+	-- Determine genesis file
+	local genesis_map = {
+			default = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil },
+			p2e1 = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil }, -- the private json is somewhere (todo?)
+			ec1  = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
+			ec2  = { genesis = home .. "/chain-p2e/test-genesis-ec2.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec2/private.json" },
+			bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
+			bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
+	}
+	local genesis_fn = genesis_map[cfg_chain].genesis
+	local genesis_fn_private = genesis_map[cfg_chain].private
+
+	if not genesis_map[cfg_chain] then
+			print("Unknown chain: " .. cfg_chain)
+	end
+
+	print("Genesis filename: " .. genesis_fn)
+
+	-- Load secret
+	local mykey = { pub = nil, priv = nil }
+	local mysettings = { witness_id = nil }
+
+	if cfg_role == "one" then -- the old way
+		mykey.pub = "BTS5k46b9hXwYjLCZZy8usUGjtREeoQeEoLRUonJVkvp9GvVM3bx9"
+		local privkey1_fullfn = home .. "/.devel/SECRET/pay2exchange/" .. mykey.pub .. ".secret"
+		local privkey1_secret = ""
+		if not file_exists(privkey1_fullfn) then
+				print("Cannot read secret file (" .. privkey1_fullfn .. "). Aborting.")
+				os.exit(1)
+		else
+				local file = io.open(privkey1_fullfn, "r")
+				local line = file:read("*l")
+				file:close()
+				if not line:match("^[%w]+$") then
+						print("The data read does not look correct. Aborting.")
+						os.exit(1)
+				else
+						privkey1_secret = line
+						print("Read secret key.")
+						mykey.priv = privkey1_secret
+						mysettings.witness_id = '1.6.1'
+				end
+		end
+	elseif begins_with(cfg_role, "wit") then
+		wit=cfg_role
+		print("You are a witness (" .. wit .. ")")
+		if not genesis_fn_private then
+			error("You attempt to have role of a witness, but we do not have genesis-private. wrong chain? chain is: " .. cfg_chain)
+		end
+		local wit_num_str = wit:match("^wit(%d+)$")
+		local wit_num = tonumber(wit_num_str)
+		print("You are a witness number: " .. wit_num)
+		mysettings.witness_id = '1.6.' .. tostring(wit_num)
+		mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
+	elseif begins_with(cfg_role, "node") then
+		print("You are just a node (not a witness - not loading wit privkey)")
+	else
+		print("Unknown role (" .. cfg_role .. ")")
+		os.exit(1)
+	end
+
+	-- Construct program arguments
+	local prog = "programs/witness_node/witness_node"
+	local execargs = {
+			"--rpc-endpoint=0.0.0.0:" .. port1,
+			"--p2p-endpoint=0.0.0.0:" .. port2,
+			"--enable-stale-production",
+			"--genesis-json=" .. genesis_fn
+	}
+	if mykey.pub or mykey.priv then
+		if not (mykey.pub and mykey.priv) then
+			error("If you set mykey then set all of it.")
+		end
+		local arg_add = string.format('--private-key=["%s", "%s"]', mykey.pub, mykey.priv)
+		print("Creating arg to set private-key: " .. arg_add)
+		table.insert(execargs, arg_add)
+	end
+
+	if mysettings.witness_id then
+		table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..  '"')
+	end
+
+	-- pass extra execargs -e
+	local function args_after_e(args)
+		local found = false
+		local result = {}
+		local found_ix = 0
+		for ix, v in pairs(args) do
+			if found then
+				if ix > found_ix then
+					table.insert(result, v)
+				end
+			elseif v == "-e" then
+				found = true
+				found_ix = ix
 			end
-		elseif v == "-e" then
-			found = true
-			found_ix = ix
+		end
+		return result
+	end
+
+	local after_e = args_after_e(arg)
+	if #after_e > 0 then
+		for i = 1, #after_e do
+				execargs[#execargs + 1] = after_e[i]
 		end
 	end
-	return result
-end
 
-local after_e = args_after_e(arg)
-if #after_e > 0 then
-	for i = 1, #after_e do
-			execargs[#execargs + 1] = after_e[i]
+	-- Check if witness_node is executable
+	local function file_is_executable(path)
+			return os.execute('[ -x "' .. path .. '" ]') == 0
 	end
-end
 
--- Check if witness_node is executable
-local function file_is_executable(path)
-    return os.execute('[ -x "' .. path .. '" ]') == 0
-end
-
-if not file_is_executable(prog) then
-    io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable.\n")
-    os.exit(1)
-end
-
-function simple_exec(prog,execexecargs)
-	local argv = { [0] = prog }
-	for i = 1, #execargs do
-		argv[i] = execargs[i]
+	if not file_is_executable(prog) then
+			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable.\n")
+			os.exit(1)
 	end
-	local pid = posix.fork()
-	if pid == 0 then -- we are the child here
-		-- Child inherits stdin/stdout/stderr, so TTY stays attached
-		posix.execp(prog, argv) -- start the real cmd
-		-- we reach this line of code (inside this pid==0) only if we failed to call the child process
-		error("Failed to run program ("..prog..")")
-		posix._exit(127)
+
+	function simple_exec(prog,execexecargs)
+		local argv = { [0] = prog }
+		for i = 1, #execargs do
+			argv[i] = execargs[i]
+		end
+		local pid = posix.fork()
+		if pid == 0 then -- we are the child here
+			-- Child inherits stdin/stdout/stderr, so TTY stays attached
+			posix.execp(prog, argv) -- start the real cmd
+			-- we reach this line of code (inside this pid==0) only if we failed to call the child process
+			error("Failed to run program ("..prog..")")
+			posix._exit(127)
+		else
+			-- Parent waits for interactive program to exit
+			posix.wait(pid)
+		end
+	end
+
+
+	function show_args(args)
+		print("Arguments for program")
+		for _, arg in ipairs(args) do
+				print("  " .. arg)
+		end
+
+		if is_executable("./showargs") then
+				print("-------------------")
+				print("Arguments for program, as printed by a dummy program:")
+				simple_exec("./showargs", args)
+				print("-------------------")
+		end -- if binary showargs
+	end -- our show_args()
+
+	-- print each argument to verify what we try to execute
+	for i, v in ipairs(execargs) do
+		print("ARG[" .. i .. "] = " .. v)
+	end
+	show_args(execargs)
+
+
+	print("---------------------------------------------------------------------")
+
+	local run_modes={}
+
+	for _, v in ipairs(arg) do
+		if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
+	end
+
+	run_modes.n = function()
+			simple_exec(prog, execargs);
+	end
+	run_modes.normal = run_modes.n
+	run_modes.gdb = function()
+			simple_exec("gdb", {"--args", prog, unpack(execargs)});
+	end
+	run_modes.net1 = function()
+	end
+
+	print("---------------------------------------------------------------------")
+	if run_modes[cfg_mode] then
+			run_modes[cfg_mode]()
 	else
-		-- Parent waits for interactive program to exit
-		posix.wait(pid)
-	end
-end
-
-
-function show_args(args)
-	print("Arguments for program")
-	for _, arg in ipairs(args) do
-			print("  " .. arg)
+			print("Unknown mode: " .. cfg_mode)
 	end
 
-	if is_executable("./showargs") then
-			print("-------------------")
-			print("Arguments for program, as printed by a dummy program:")
-			simple_exec("./showargs", args)
-			print("-------------------")
-	end -- if binary showargs
-end -- our show_args()
+	print([[
+	---------------------------------------------------------------------
+	]])
 
--- print each argument to verify what we try to execute
-for i, v in ipairs(execargs) do
-  print("ARG[" .. i .. "] = " .. v)
-end
-show_args(execargs)
-
-
-print("---------------------------------------------------------------------")
-
-local run_modes={}
-
-for _, v in ipairs(arg) do
-  if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
-end
-
-run_modes.n = function()
-		simple_exec(prog, execargs);
-end
-run_modes.normal = run_modes.n
-run_modes.gdb = function()
-		simple_exec("gdb", {"--args", prog, unpack(execargs)});
-end
-run_modes.net1 = function()
-end
-
-print("---------------------------------------------------------------------")
-if run_modes[cfg_mode] then
-    run_modes[cfg_mode]()
-else
-    print("Unknown mode: " .. cfg_mode)
-end
-
-print([[
----------------------------------------------------------------------
-]])
-
-print("Done.")
-print("Was running with args:")
-show_args(execargs)
+	print("Done.")
+	print("Was running with args:")
+	show_args(execargs)
 
 
 end
