@@ -160,6 +160,12 @@ function main_start_node(given_arg)
 			print("After editing myself - exit")
 			os.exit()
 	end
+	if cfg_mode == "x2" then
+			local script = debug.getinfo(1).source:sub(2) -- get current script path
+			mylib_simpleexec.simple_exec("vim", {script})
+			print("After editing myself (x2) - exit")
+			os.exit()
+	end
 	if cfg_mode == "h" then
 		help()
 		os.exit()
