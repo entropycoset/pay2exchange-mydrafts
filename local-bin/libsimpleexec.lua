@@ -157,6 +157,15 @@ local function simple_exec(cmd, args, _ignored)
   -- ---- Parent ----
   C.close(slave[0])
 
+  -- handle SIGWINCH to update child terminal size dynamically
+  local ws = ffi.new("struct winsize[1]")
+  local function resize()
+    if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
+      C.ioctl(master[0], TIOCSWINSZ, ws)
+    end
+  end
+  C.signal(SIGWINCH, ffi.cast("sighandler_t", resize))
+
   -- poll() both stdin (0) and PTY master
   local pfds = ffi.new("struct pollfd[2]")
   pfds[0].fd = 0;          pfds[0].events = POLLIN
