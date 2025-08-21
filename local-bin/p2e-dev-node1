@@ -345,7 +345,7 @@ function main_start_node(given_arg)
 		if is_executable("./showargs") then
 				print("-------------------")
 				print("Arguments for program, as printed by a dummy program:")
-				mylib_simpleexec.simple_exec("./showargs", args)
+				mylib_simpleexec.simple_exec("./showargs", args, true)
 				print("-------------------")
 		end -- if binary showargs
 	end -- our show_args()
@@ -366,11 +366,11 @@ function main_start_node(given_arg)
 	end
 
 	run_modes.n = function()
-			mylib_simpleexec.simple_exec(prog, execargs);
+			mylib_simpleexec.simple_exec(prog, execargs, true);
 	end
 	run_modes.normal = run_modes.n
 	run_modes.gdb = function()
-			mylib_simpleexec.simple_exec("gdb", {"--args", prog, unpack(execargs)});
+			mylib_simpleexec.simple_exec("gdb", {"--args", prog, unpack(execargs)}, true);
 	end
 	run_modes.net1 = function()
 	end

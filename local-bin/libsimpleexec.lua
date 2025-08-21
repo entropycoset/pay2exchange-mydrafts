@@ -3,7 +3,7 @@ local posix = require("posix")
 local THISLIB = {}
 
 function THISLIB.simple_exec(prog, execargs, to_front)
-  to_front = not not to_front
+  if to_front == nil then error("Must provide argument to_front true/false") end
 
   -- build argv
   local argv = { [0] = prog }
