@@ -1,4 +1,3 @@
-LIB={}
 -- ffi_simple_exec.lua
 
 local ffi = require("ffi")
@@ -13,7 +12,8 @@ ffi.cdef[[
     SIGINT       = 2,
     SIGTSTP      = 20,
     SIGTTOU      = 22,
-    SA_RESTART   = 0x10000000
+    SA_RESTART   = 0x10000000,
+    SIG_IGN      = 1          // define the ignore‐signal handler constant
   };
 
 // process control
@@ -30,51 +30,44 @@ ffi.cdef[[
   pid_t waitpid(pid_t pid, int *status, int options);
   void  _exit(int status);
 
-// signal handling
-  struct sigaction {
-    void       (*sa_handler)(int);
-    sigset_t     sa_mask;
-    int          sa_flags;
-    void       (*sa_restorer)(void);
-  };
-  int sigaction(int signum,
-                const struct sigaction *act,
-                struct sigaction *oldact);
-  int kill(pid_t pid, int sig);
+// simple signal(2) & kill(2)
+  typedef void (*sighandler_t)(int);
+  sighandler_t signal(int signum, sighandler_t handler);
+  int          kill(pid_t pid, int sig);
 
 // errno
   extern int errno;
 ]]
 
--- waitpid status helpers
-local function WIFEXITED(s)   return bit.band(s, 0x7f) == 0 end
-local function WEXITSTATUS(s) return bit.rshift(bit.band(s, 0xff00), 8) end
-local function WIFSIGNALED(s) return bit.band(s,0x7f) ~= 0  and bit.band(s,0x7f) ~= 0x7f end
-local function WTERMSIG(s)    return bit.band(s, 0x7f) end
+-- waitpid‐status decoding
+local function WIFEXITED(s)   return bit.band(s,0x7f)==0 end
+local function WEXITSTATUS(s) return bit.rshift(bit.band(s,0xff00),8) end
+local function WIFSIGNALED(s) return bit.band(s,0x7f)~=0 and bit.band(s,0x7f)~=0x7f end
+local function WTERMSIG(s)    return bit.band(s,0x7f) end
 
--- keep callbacks alive so they are never GC’d
-local _signal_anchors = {}
+-- keep callbacks alive
+local _anchors = {}
 
-function LIB.simple_exec(prog, args, to_front)
+local function simple_exec(prog, args, to_front)
   to_front = not not to_front
 
-  -- build a NULL‐terminated const char* argv
+  -- build NULL‐terminated argv
   local argc = #args + 1
   local argv = ffi.new("const char *[?]", argc+1)
   argv[0] = prog
   for i=1,#args do argv[i] = args[i] end
   argv[argc] = nil
 
-  -- save our current foreground pgrp (so we can restore later)
+  -- save parent’s fg pgrp
   local parent_pgrp
   if to_front then
     parent_pgrp = ffi.C.tcgetpgrp(0)
   end
 
-  -- fork off the child
+  -- fork
   local pid = ffi.C.fork()
   if pid == 0 then
-    -- ─── Child ───
+    -- Child
     if to_front then
       if ffi.C.setpgid(0,0) < 0 then
         io.stderr:write("setpgid failed: ", ffi.errno(), "\n")
@@ -83,67 +76,58 @@ function LIB.simple_exec(prog, args, to_front)
       ffi.C.tcsetpgrp(0, ffi.C.getpid())
     end
 
-    ffi.C.execvp(prog, ffi.cast("char *const *", argv))
-    -- only reach here if exec failed
+    ffi.C.execvp(prog,
+      ffi.cast("char *const *", argv)
+    )
     io.stderr:write("execvp failed: ", ffi.errno(), "\n")
     ffi.C._exit(127)
   end
 
-  -- ─── Parent ───
-  -- prepare slots for old handlers
-  local old_int  = ffi.new("struct sigaction[1]")
-  local old_tstp = ffi.new("struct sigaction[1]")
-  local old_ttou = ffi.new("struct sigaction[1]")
+  -- Parent: set up signal handling & terminal hand‐off
+  local old_int, old_tstp, old_ttou
 
   if to_front then
-    -- 1) Ignore SIGTTOU so we aren't stopped when changing the terminal
-    local ign = ffi.new("struct sigaction[1]")
-    -- SIG_IGN is (void(*)(int))1 in libc
-    ign[0].sa_handler = ffi.cast("void(*)(int)", 1)
-    ign[0].sa_mask    = 0
-    ign[0].sa_flags   = ffi.C.SA_RESTART
-    ffi.C.sigaction(ffi.C.SIGTTOU, ign, old_ttou)
+    -- ignore SIGTTOU so parent isn’t stopped when we tcsetpgrp()
+    old_ttou = ffi.C.signal(ffi.C.SIGTTOU,
+                   ffi.cast("sighandler_t", ffi.C.SIG_IGN)
+                 )
 
-    -- 2) Forward SIGINT & SIGTSTP to the child
-    local cb = ffi.cast("void(*)(int)", function(sig)
+    -- forward SIGINT & SIGTSTP to child
+    local cb = ffi.cast("sighandler_t", function(sig)
       ffi.C.kill(pid, sig)
     end)
-    _signal_anchors[#_signal_anchors+1] = cb
+    _anchors[#_anchors+1] = cb
 
-    local sa = ffi.new("struct sigaction[1]")
-    sa[0].sa_handler = cb
-    sa[0].sa_mask    = 0
-    sa[0].sa_flags   = ffi.C.SA_RESTART
+    old_int  = ffi.C.signal(ffi.C.SIGINT,  cb)
+    old_tstp = ffi.C.signal(ffi.C.SIGTSTP, cb)
 
-    ffi.C.sigaction(ffi.C.SIGINT,  sa, old_int)
-    ffi.C.sigaction(ffi.C.SIGTSTP, sa, old_tstp)
-
-    -- 3) Ensure the child’s process group exists, then hand over the TTY
+    -- ensure child pgid then give it the terminal
     ffi.C.setpgid(pid, pid)
     ffi.C.tcsetpgrp(0, pid)
   end
 
-  -- wait for the child
+  -- wait for child
   local st = ffi.new("int[1]")
   ffi.C.waitpid(pid, st, 0)
   local status = st[0]
 
-  -- restore our terminal & signal handlers
+  -- restore terminal & handlers
   if to_front then
     ffi.C.tcsetpgrp(0, parent_pgrp or ffi.C.getpid())
-    ffi.C.sigaction(ffi.C.SIGINT,  old_int,  nil)
-    ffi.C.sigaction(ffi.C.SIGTSTP, old_tstp, nil)
-    ffi.C.sigaction(ffi.C.SIGTTOU, old_ttou, nil)
+    ffi.C.signal(ffi.C.SIGINT,  old_int)
+    ffi.C.signal(ffi.C.SIGTSTP, old_tstp)
+    ffi.C.signal(ffi.C.SIGTTOU, old_ttou)
   end
 
   -- print exit status
   if WIFEXITED(status) then
-    io.write(("Child exited with code %d\n"):format(WEXITSTATUS(status)))
+    print(("Child exited with code %d"):format(WEXITSTATUS(status)))
   elseif WIFSIGNALED(status) then
-    io.write(("Child killed by signal %d\n"):format(WTERMSIG(status)))
+    print(("Child killed by signal %d"):format(WTERMSIG(status)))
   else
-    io.write(("Child ended with status 0x%x\n"):format(status))
+    print(("Child ended with status 0x%x"):format(status))
   end
 end
 
-return LIB
+return { simple_exec = simple_exec }
+
