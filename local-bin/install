@@ -5,7 +5,7 @@ echo "Installing to $localbin"
 
 mkdir -p ~/.local/bin/
 
-for prog in "p2e-dev-node1" "git-module-rm-all"
+for prog in "p2e-dev-node1" "git-module-rm-all" lib*.lua
 do
 
 	if [ -r "${localbin}/${prog}" ]

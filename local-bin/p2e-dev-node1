@@ -5,6 +5,12 @@
 local lfs = require("lfs")
 local posix = require("posix")
 
+local info = debug.getinfo(1, "S")
+local script_path = info.source:match("@(.*/)")
+package.path = script_path .. "?.lua;" .. package.path
+
+local mylib_simpleexec = require("libsimpleexec")
+
 local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
 
 ---------------------------------------------------------------------
@@ -327,23 +333,7 @@ function main_start_node(given_arg)
 			os.exit(1)
 	end
 
-	function simple_exec(prog,execexecargs)
-		local argv = { [0] = prog }
-		for i = 1, #execargs do
-			argv[i] = execargs[i]
-		end
-		local pid = posix.fork()
-		if pid == 0 then -- we are the child here
-			-- Child inherits stdin/stdout/stderr, so TTY stays attached
-			posix.execp(prog, argv) -- start the real cmd
-			-- we reach this line of code (inside this pid==0) only if we failed to call the child process
-			error("Failed to run program ("..prog..")")
-			posix._exit(127)
-		else
-			-- Parent waits for interactive program to exit
-			posix.wait(pid)
-		end
-	end
+	local posix = require("posix")
 
 
 	function show_args(args)
@@ -376,11 +366,11 @@ function main_start_node(given_arg)
 	end
 
 	run_modes.n = function()
-			simple_exec(prog, execargs);
+			mylib_simpleexec.simple_exec(prog, execargs);
 	end
 	run_modes.normal = run_modes.n
 	run_modes.gdb = function()
-			simple_exec("gdb", {"--args", prog, unpack(execargs)});
+			mylib_simpleexec.simple_exec("gdb", {"--args", prog, unpack(execargs)});
 	end
 	run_modes.net1 = function()
 	end
