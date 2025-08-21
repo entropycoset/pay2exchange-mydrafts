@@ -53,9 +53,9 @@ void  cfmakeraw(struct termios *termios_p);
 int   kill(pid_t pid, int sig);
 typedef void (*sighandler_t)(int);
 sighandler_t signal(int signum, sighandler_t handler);
+extern int errno;
 ]]
 
--- Lua constants
 local TCSANOW   = 0
 local WNOHANG   = 1
 local SIGINT    = 2
@@ -69,8 +69,8 @@ local TIOCSCTTY  = 0x540E
 local TIOCGWINSZ = 0x5413
 local TIOCSWINSZ = 0x5414
 
--- maximum buffer size to avoid runaway memory usage
 local MAX_BUF_SIZE = 1024*1024 -- 1 MB
+local EINTR = 4
 
 -- build a C argv that stays alive
 local function build_argv(list)
@@ -95,7 +95,14 @@ end
 local function simple_exec(cmd, args, _ignored)
   args = args or {}
 
-  local argv_list = { "stdbuf", "-o0", "-e0", cmd }
+  -- preserve colors: set TERM
+  --os.setenv("TERM", "xterm-256color")
+  ffi.cdef[[
+  int setenv(const char *name, const char *value, int overwrite);
+  ]]
+  C.setenv("TERM", "xterm-256color", 1)
+
+  local argv_list = { cmd }
   for i = 1, #args do argv_list[#argv_list+1] = args[i] end
   local argv, _keep = build_argv(argv_list)
 
@@ -121,24 +128,19 @@ local function simple_exec(cmd, args, _ignored)
   local old_sigint = C.signal(SIGINT, SIG_IGN)
   local child_pid
 
-  -- robust cleanup function for TTY, signals, and child process
   local cleanup
   cleanup = function(msg, already_in_error)
-    -- kill child if exists
     if child_pid and child_pid > 0 then
       pcall(C.kill, child_pid, SIGINT)
       local st = ffi.new("int[1]")
       pcall(C.waitpid, child_pid, st, WNOHANG)
     end
-    -- restore terminal
     if have_saved then
       pcall(C.tcsetattr, 0, TCSANOW, saved)
     end
-    -- restore SIGINT
     if old_sigint then
       pcall(C.signal, SIGINT, old_sigint)
     end
-    -- report message if provided
     if msg then
       if already_in_error then
         io.stderr:write("simple_exec error: ", msg, "\n")
@@ -152,11 +154,9 @@ local function simple_exec(cmd, args, _ignored)
     local pid = C.fork()
     if pid < 0 then cleanup("fork failed") end
     if pid == 0 then
-      -- Child process
       C.close(master[0])
       C.setsid()
       if C.ioctl(slave[0], TIOCSCTTY, 0) ~= 0 then os.exit(127) end
-      -- propagate window size
       local ws = ffi.new("struct winsize[1]")
       if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
         C.ioctl(slave[0], TIOCSWINSZ, ws)
@@ -180,7 +180,6 @@ local function simple_exec(cmd, args, _ignored)
       winch_pending = true
     end
     C.signal(SIGWINCH, ffi.cast("sighandler_t", sigwinch_handler))
-    -- initial resize
     if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
       C.ioctl(master[0], TIOCSWINSZ, ws)
     end
@@ -189,7 +188,6 @@ local function simple_exec(cmd, args, _ignored)
     pfds[0].fd = 0;          pfds[0].events = POLLIN
     pfds[1].fd = master[0];  pfds[1].events = POLLIN
 
-    -- enforce maximum buffer size
     local buf_size = 65536
     if buf_size > MAX_BUF_SIZE then
         cleanup(("buffer size %d exceeds maximum %d"):format(buf_size, MAX_BUF_SIZE))
@@ -203,7 +201,6 @@ local function simple_exec(cmd, args, _ignored)
       local pret = C.poll(pfds, 2, -1)
       if pret < 0 then cleanup("poll failed") end
 
-      -- handle SIGWINCH deferred
       if winch_pending then
         winch_pending = false
         if C.ioctl(0, TIOCGWINSZ, ws) == 0 then
@@ -214,31 +211,30 @@ local function simple_exec(cmd, args, _ignored)
       -- from child -> stdout
       if bit.band(pfds[1].revents, bit.bor(POLLIN, bit.bor(POLLERR, POLLHUP))) ~= 0 then
         local n = C.read(master[0], buf, buf_size)
-        if n < 0 then cleanup("read(master) failed") end
+        if n < 0 and ffi.errno() ~= EINTR then cleanup("read(master) failed") end
         if n > MAX_BUF_SIZE then cleanup(("child output exceeded max buffer %d bytes"):format(MAX_BUF_SIZE)) end
-        if n == 0 then
-          child_alive = false
-        else
+        if n > 0 then
           local written = 0
           while written < n do
             local w = C.write(1, buf + written, n - written)
-            if w <= 0 then cleanup("write(stdout) failed") end
-            written = written + w
+            if w <= 0 and ffi.errno() ~= EINTR then cleanup("write(stdout) failed") end
+            if w > 0 then written = written + w end
           end
         end
+        if n == 0 then child_alive = false end
       end
 
       -- from stdin -> child
       if bit.band(pfds[0].revents, POLLIN) ~= 0 then
         local n = C.read(0, buf, buf_size)
-        if n < 0 then cleanup("read(stdin) failed") end
+        if n < 0 and ffi.errno() ~= EINTR then cleanup("read(stdin) failed") end
         if n > MAX_BUF_SIZE then cleanup(("stdin read exceeded max buffer %d bytes"):format(MAX_BUF_SIZE)) end
         if n > 0 then
           local written = 0
           while written < n do
             local w = C.write(master[0], buf + written, n - written)
-            if w <= 0 then cleanup("write(master) failed") end
-            written = written + w
+            if w <= 0 and ffi.errno() ~= EINTR then cleanup("write(master) failed") end
+            if w > 0 then written = written + w end
           end
         end
       end
@@ -260,9 +256,7 @@ local function simple_exec(cmd, args, _ignored)
     cleanup(err, true)
   end)
 
-  if not ok then
-    cleanup(err, true)
-  end
+  if not ok then cleanup(err, true) end
 
   return ok
 end
