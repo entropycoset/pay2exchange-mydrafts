@@ -9,6 +9,8 @@ local script_path = info.source:match("@(.*/)")
 package.path = script_path .. "?.lua;" .. package.path
 
 local mylib_simpleexec = require("libsimpleexec")
+local mylib_sandboxdir = require("libsandboxdir")
+
 
 local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
 
@@ -21,8 +23,9 @@ p2e-dev-node1 d    - delete the run data
 p2e-dev-node1 x    - this starts editing this script here
 p2e-dev-node1 MODE CHAIN ROLE OPTIONS -e EXEC_OPTIONS
 p2e-dev-node1 normal bit node
-p2e-dev-node1 normal ec1 wit01
-p2e-dev-node1 gdb ec1 wit01
+p2e-dev-node1 normal ec2 wit01
+p2e-dev-node1 gdb ec2 wit01
+p2e-dev-node1 net1 ec2 4
 
 OPTIONS: -dry (dry run).
 EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
@@ -212,6 +215,10 @@ function main_start_node(given_arg)
 		os.exit()
 	end
 
+	local sandboxdir = mylib_sandboxdir:new("var-" .. cfg_role)
+	sandboxdir:start()
+	print("now I am in directory: " .. lfs.currentdir())
+
 	-- Generate random ports
 	local r1 = good_rand(970)
 	local port1 = r1 + 1025
@@ -283,7 +290,7 @@ function main_start_node(given_arg)
 	end
 
 	-- Construct program arguments
-	local prog = "programs/witness_node/witness_node"
+	local prog = "../programs/witness_node/witness_node"
 	local execargs = {
 			"--rpc-endpoint=0.0.0.0:" .. port1,
 			"--p2p-endpoint=0.0.0.0:" .. port2,
@@ -378,6 +385,7 @@ function main_start_node(given_arg)
 			mylib_simpleexec.simple_exec("gdb", {"--args", prog, unpack(execargs)}, true);
 	end
 	run_modes.net1 = function()
+			mylib_simpleexec.simple_exec(prog, execargs, true);
 	end
 
 	print("---------------------------------------------------------------------")
@@ -395,10 +403,31 @@ function main_start_node(given_arg)
 	print("Was running with args:")
 	show_args(execargs)
 
+	sandboxdir:finish()
 
 end
 
-main_start_node(arg)
+function main_start_network(given_arg)
+	given_arg = given_arg or {}
+
+	local cfg_chain = given_arg[2] or "default"
+	local cfg_rolecount = given_arg[3] or 2
+
+	print("role count: " .. cfg_rolecount)
+
+	for i = 1, cfg_rolecount do
+    local role = string.format("wit%02d", i)
+		print("role: " .. role)
+	end
+end
+
+
+main_mode = arg[1]
+if main_mode == "net1" then
+	main_start_network(arg)
+else
+	main_start_node(arg)
+end
 
 
 
