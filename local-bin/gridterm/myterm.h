@@ -1,8 +1,4 @@
-#ifndef MYTERM_H
-#define MYTERM_H
-
-#include <QObject>
-#include <QWidget>
+#pragma once
 #include <qtermwidget.h>
 #include <QMenu>
 #include <QContextMenuEvent>
@@ -10,11 +6,8 @@
 class MyTerm : public QTermWidget {
     Q_OBJECT
 public:
-    using QTermWidget::QTermWidget;
+    using QTermWidget::QTermWidget; // inherit constructors
+
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
 };
-
-
-
-#endif // MYTERM_H

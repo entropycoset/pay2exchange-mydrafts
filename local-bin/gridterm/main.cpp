@@ -6,26 +6,10 @@
 #include <QGridLayout>
 #include <QVector>
 #include <qtermwidget.h>
-
-
-
-#include <qtermwidget.h>
 #include <QMenu>
 #include <QContextMenuEvent>
 
-class MyTerm : public QTermWidget {
-    Q_OBJECT
-public:
-    using QTermWidget::QTermWidget; // inherit constructors
-
-protected:
-    void contextMenuEvent(QContextMenuEvent *event) override {
-        QMenu menu(this);
-        menu.addAction("Copy", this, &QTermWidget::copyClipboard);
-        menu.addAction("Paste", this, &QTermWidget::pasteClipboard);
-        menu.exec(event->globalPos());
-    }
-};
+#include "myterm.h"
 
 void configure_term(QTermWidget *term, int fontsize_add) {
     //term->setColor(QTermWidget::BackgroundRole, QColor(0, 0, 0));       // black background
