@@ -172,7 +172,7 @@ public:
 
             std::vector<std::string> args;
             args.push_back("normal");
-            args.push_back("ec2");
+            args.push_back(this->m_settings.cfg_bc);
             bool added_witt=false; // we created wittness now?
             bool added_user=false; // we created regular-user now?
             std::string role;
@@ -189,6 +189,9 @@ public:
             args.push_back( "-portindex="s + std::to_string(countNode));
             args.push_back( "-userindex="s + std::to_string(countNode));
             args.push_back( "-netip="s + "127.0.0.1"s);
+
+            args.push_back( "-e" );
+            args.push_back( "--seed-nodes=[\"127.0.0.1:1026\", \"127.0.0.1:1028\"]" );
             term->run_cmd("p2e-dev-node1", args );
             //"  witness nr 1 -> p2e-dev-node1 normal ec2 wit01 -portindex=1  -userindex=1\n"
             if (added_witt) countNodeWitt++;
