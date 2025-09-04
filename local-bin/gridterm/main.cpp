@@ -11,6 +11,8 @@
 #include <QDir>
 #include <QDebug>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 
 #include <QShortcut>
 #include <QKeySequence>
@@ -76,7 +78,7 @@ class TerminalWindow : public QMainWindow {
 protected:
     TerminalWindowSettings m_settings;
     QVector<MyTerm*> terminals; ///< the terminal widgets. these are Qt-like objects, they are owned (memory) by the GUI parent etc
-    QVector<MyTerm*> terminals_node; ///< the terminal widgets that leads to node N. these are Qt-like objects, they are owned (memory) by the GUI parent etc
+    QVector<MyTerm*> terminals_node_any; ///< the terminal widgets that leads to any-node with number N+1 (+1 since numbering is from 1). these are Qt-like objects, they are owned (memory) by the GUI parent etc
 
 public:
 
@@ -119,10 +121,6 @@ public:
         mainLayout->setContentsMargins(0, 0, 0, 0);
         mainLayout->setSpacing(0);
 
-        int paneNum=1, nodeNum=1; // pane is every terminal ; node is just running one of nodes
-        int nodeWitNum=1, nodeUserNum=1; // a witness node number;  a non-witness node number
-        // TODO ^^^
-
         const int count_nodes_into_big=1; // how many of the nodes will be placed actually into the big panes
         for (int i = 0; i < this->m_settings.m_panes_big; ++i) {
             QWidget *panel = new QWidget();
@@ -133,8 +131,6 @@ public:
             panelLayout->addWidget(term);
             topLayout->addWidget(panel);
             terminals.append(term);  // Add to array
-            term->run_cmd("echo ", { QString::fromStdString( std::to_string(nodeNum) ) } );
-            nodeNum++;
         }
 
         // Bottom panel: the AxB grid
@@ -148,8 +144,6 @@ public:
                 panelLayout->addWidget(term);
                 bottomLayout->addWidget(panel, row, col);
                 terminals.append(term);  // Add to array
-                term->run_cmd("echo ", { QString::fromStdString( std::to_string(nodeNum) ) } );
-                nodeNum++;
             }
         }
 //                              { QString::fromStdString( std::to_string(nodeNum) ) } );
@@ -166,6 +160,43 @@ public:
         setCentralWidget(central);
 
         new QShortcut(QKeySequence("F9"), this, SLOT(nice_shutdown()));
+
+        using namespace std::string_literals;
+
+        int countTerm=0, countNode=0, countNodeWitt=0, countNodeUser=0; // counter: terminals, node(any type), witness node, user nodes
+        for (const auto & term : terminals) {
+
+            this->terminals_node_any.push_back(term);
+            std::ostringstream info_oss; info_oss << "Term #"<<(countTerm);
+            term->run_cmd("echo ", {  info_oss.str() } );
+
+            std::vector<std::string> args;
+            args.push_back("normal");
+            args.push_back("ec2");
+            bool added_witt=false; // we created wittness now?
+            bool added_user=false; // we created regular-user now?
+            std::string role;
+            if (countNode < m_settings.m_count_witness) { // wit01 and such
+                int numWitt = countNodeWitt + 1; // numbers of witness is from 1, such as wit01
+                std::ostringstream oss; oss<<"wit"<<std::setw(2)<<std::setfill('0')<<numWitt;
+                role = oss.str();
+                added_witt=true;
+            } else { // user
+                role="node";
+                added_user=true;
+            }
+            args.push_back(role);
+            args.push_back( "-portindex="s + std::to_string(countNode));
+            args.push_back( "-userindex="s + std::to_string(countNode));
+            args.push_back( "-netip="s + "127.0.0.1"s);
+            term->run_cmd("p2e-dev-node1", args );
+            //"  witness nr 1 -> p2e-dev-node1 normal ec2 wit01 -portindex=1  -userindex=1\n"
+            if (added_witt) countNodeWitt++;
+            if (added_user) countNodeUser++;
+            if (added_user || added_witt) countNode++;
+            countTerm++;
+        }
+
     }
 };
 

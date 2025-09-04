@@ -34,6 +34,7 @@ end
 
 -- Recursively delete directory and restore original CWD
 function SandboxDir:finish()
+		print("Ending work in directory " .. self.dirname)
     assert(lfs.chdir(self.original_cwd), "Failed to restore original working directory.")
     print("Restored working directory to:", self.original_cwd)
 

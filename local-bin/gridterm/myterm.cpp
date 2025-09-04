@@ -5,6 +5,35 @@
 #include <QKeySequence>
 
 
+// -------------------------------------------------------
+
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QPalette>
+
+void addOverlay(QWidget *parent) {
+    QLabel *overlay = new QLabel("Overlay text", parent);
+
+    // Make it transparent to mouse and focus
+    overlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+    overlay->setAttribute(Qt::WA_NoSystemBackground);
+    overlay->setAttribute(Qt::WA_TranslucentBackground);
+    overlay->setAttribute(Qt::WA_ShowWithoutActivating);
+    overlay->setFocusPolicy(Qt::NoFocus);
+
+    // Style: semi-transparent white text, no background
+    overlay->setStyleSheet("color: rgba(255, 255, 255, 128);"
+                           "background: transparent;"
+                           "font-size: 14px;");
+
+    // Position it — e.g., top-right corner
+    overlay->move(parent->width() - 100, 10);
+    overlay->resize(90, 20);
+    overlay->show();
+}
+
+// -------------------------------------------------------
+
 void MyTerm::contextMenuEvent(QContextMenuEvent *event) {
     QMenu menu(this);
     menu.addAction("Copy", this, &QTermWidget::copyClipboard);
@@ -12,6 +41,8 @@ void MyTerm::contextMenuEvent(QContextMenuEvent *event) {
     menu.exec(event->globalPos());
 
     new QShortcut(QKeySequence("F9"), this, SLOT(close()));
+
+    addOverlay(this);
 }
 
 // POSIX-safe shell quoting: wraps in '...' and turns ' into '\''.
@@ -22,10 +53,10 @@ static QString shellQuote(const QString &s) {
     return "'" + r + "'";
 }
 
-void MyTerm::run_cmd(QString cmd, std::vector< QString > args) {
+void MyTerm::run_cmd(QString cmd, std::vector< std::string > args) {
     QString fullcmd = cmd;
     for (const auto & arg : args) {
-        fullcmd = fullcmd + " " + shellQuote(arg);
+        fullcmd = fullcmd + " " + shellQuote( QString::fromStdString(arg) );
     }
     fullcmd = fullcmd + "\r";
     this->sendText(fullcmd);
