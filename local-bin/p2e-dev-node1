@@ -21,14 +21,19 @@ function help()
 p2e-dev-node1 h    - this shows help and exits
 p2e-dev-node1 d    - delete the run data
 p2e-dev-node1 x    - this starts editing this script here
-p2e-dev-node1 MODE CHAIN ROLE OPTIONS -e EXEC_OPTIONS
+p2e-dev-node1 MODE CHAIN ROLE OPTIONS... -e EXEC_OPTIONS
 p2e-dev-node1 normal bit node
 p2e-dev-node1 normal ec2 wit01
 p2e-dev-node1 gdb ec2 wit01
-p2e-dev-node1 net1 ec2 4
+p2e-dev-node1 net1 ec2 4   # XXX  deprecated
+p2e-dev-node1 gdb ec2 wit01
 
-OPTIONS: -dry (dry run).
+OPTIONS:
+  -dry - (dry run).
+	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
+	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500
 EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
+	-netip=x - listen on IP x such as 127.0.0.1 or 0.0.0.0
 ]]
 end
 
@@ -94,6 +99,51 @@ end
 local os_family = detect_os()
 print ( "os_family: " .. os_family )
 
+---------------------------------------------------------------------
+
+function get_userindex(arg)
+  for i, v in ipairs(arg) do
+		local valmin=0
+		local valmax=1000
+    local n = string.match(v, "^%-userindex=(%d+)$")
+    if n then
+      local value = tonumber(n)
+      if value >= valmin and value <= valmax then
+        return value
+      else
+        error("Invalid: " .. value .. ". Must be in range " .. valmin .. ".." .. valmax .. ".")
+      end
+    end
+  end
+  return -1
+end
+
+function get_portindex(arg)
+  for i, v in ipairs(arg) do
+		local valmin=0
+		local valmax=460
+    local n = string.match(v, "^%-portindex=(%d+)$")
+    if n then
+      local port = tonumber(n)
+      if port >= valmin and port <= valmax then
+        return port
+      else
+        error("Invalid port index: " .. port .. ". Must be in range " .. valmin .. ".." .. valmax .. ".")
+      end
+    end
+  end
+  return -1
+end
+
+function get_netip(arg)
+  for i, v in ipairs(arg) do
+    local n = string.match(v, "^%-netip=(%S+)$")
+    if n then
+			return n
+	  end
+	end
+  return "0.0.0.0"
+end
 
 ---------------------------------------------------------------------
 
@@ -208,23 +258,34 @@ function main_start_node(given_arg)
 			return rnd % (max + 1)
 	end
 
-	print("Cleanup of old run data (delete / remove)")
+  -- old
+	print("Cleanup of old run data (delete / remove) - the old format (not sandbox)")
 	os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
 	if cfg_mode == "d" then
 		print("Removed - done, exiting")
 		os.exit()
 	end
 
-	local sandboxdir = mylib_sandboxdir:new("var-" .. cfg_role)
+	local userindex = get_userindex(arg)
+
+	local sandboxdir = mylib_sandboxdir:new("var-" .. cfg_role .. "_" .. userindex)
 	sandboxdir:start()
 	print("now I am in directory: " .. lfs.currentdir())
 
-	-- Generate random ports
-	local r1 = good_rand(970)
-	local port1 = r1 + 1025
-	local port2 = port1 + 1
-
+	local portindex = get_portindex(arg)
+	local port1
+	local port2
+	if portindex == -1 then
+		print("Generate random ports")
+		local r1 = good_rand(970)
+		port1 = r1 + 1025
+		port2 = port1 + 1
+	else
+		port1 = portindex*2 + 1025;		
+		port2 = port1 + 1;	
+	end
 	print("port1=" .. port1 .. " port2=" .. port2)
+	local netip = get_netip(arg)
 
 	local home = os.getenv("HOME")
 
@@ -292,8 +353,8 @@ function main_start_node(given_arg)
 	-- Construct program arguments
 	local prog = "../programs/witness_node/witness_node"
 	local execargs = {
-			"--rpc-endpoint=0.0.0.0:" .. port1,
-			"--p2p-endpoint=0.0.0.0:" .. port2,
+			"--rpc-endpoint=" .. netip .. ":" .. port1,
+			"--p2p-endpoint=" .. netip .. ":" .. port2,
 			"--enable-stale-production",
 			"--genesis-json=" .. genesis_fn
 	}
@@ -408,6 +469,7 @@ function main_start_node(given_arg)
 end
 
 function main_start_network(given_arg)
+	echo "---XXX--- deprecated"
 	given_arg = given_arg or {}
 
 	local cfg_chain = given_arg[2] or "default"
@@ -424,6 +486,7 @@ end
 
 main_mode = arg[1]
 if main_mode == "net1" then
+	echo "---XXX--- deprecated"
 	main_start_network(arg)
 else
 	main_start_node(arg)
