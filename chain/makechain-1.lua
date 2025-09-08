@@ -74,18 +74,87 @@ local function get_genesis_timestamp(offset_seconds)
   return timestamp
 end
 
+-- Function to get rounded timestamp from provided epoch seconds
+local function get_timestamp_from_epoch(epoch_seconds)
+  local ival = 5 -- default blocks interval
+  local genesis_time = epoch_seconds
+  if (genesis_time % ival ~= 0) then
+    genesis_time = genesis_time + (ival - (genesis_time % ival))
+  end
+  io.stderr:write("Input time (epoch): " .. epoch_seconds .. "\n")
+  io.stderr:write("Genesis time (rounded): " .. genesis_time .. "\n")
+  local timestamp = os.date("!%Y-%m-%dT%H:%M:%S", genesis_time)
+  io.stderr:write("Genesis time as timestamp: " .. timestamp .. "\n")
+  return timestamp, genesis_time
+end
+
+-- Function to normalize and write JSON with same sorting/formatting as -g mode
+local function write_normalized_json(genesis_data, original_input_data, output_filename)
+  local output_file = assert(io.open(output_filename, "w"))
+  output_file:write(lib_tablesort.encode_sorted(genesis_data, original_input_data))
+  output_file:close()
+end
+
 -- Help message
 local function show_help()
   print([[Usage:
   lua script.lua dev_key_path seed_file num_witnesses -g input.json timestamp_offset_seconds 2 > output.json
   lua script.lua dev_key_path seed_file num_witnesses -r input.json > output.json
+  lua script.lua -t epoch_seconds input.json
+
+  -g mode: Generate new genesis file with timestamp offset from current time
+  -r mode: Replace placeholders in template file
+  -t mode: Modify existing JSON file's timestamp to specified epoch seconds (rounded to 5-second intervals)
 
   seed_file: Path to a file containing the seed text (10-40 characters) on one line
 ]])
   os.exit(1)
 end
 
--- Args
+-- Args - handle different argument patterns for different modes
+local mode = arg[1]
+
+-- Handle -t mode with simplified arguments
+if mode == "-t" then
+  local epoch_seconds = tonumber(arg[2])
+  local input_file = arg[3]
+  
+  if not epoch_seconds or not input_file then
+    io.stderr:write("Error: -t mode requires epoch_seconds and input.json\n")
+    show_help()
+  end
+  
+  if not file_exists(input_file) then
+    io.stderr:write("Error: Input file not found at " .. input_file .. "\n")
+    os.exit(1)
+  end
+  
+  -- Load JSON file
+  local file = assert(io.open(input_file, "r"))
+  local input_data = file:read("*a")
+  file:close()
+  
+  -- Load existing JSON file
+  local genesis = json.decode(input_data)
+  
+  -- Get rounded timestamp from provided epoch seconds
+  local timestamp, rounded_epoch = get_timestamp_from_epoch(epoch_seconds)
+  
+  -- Update the timestamp field
+  genesis.initial_timestamp = timestamp
+  
+  -- Output the modified JSON using same sorting/normalization as -g mode
+  write_normalized_json(genesis, input_data, "genesis_timenow.json")
+  
+  -- Debug output showing final timestamp
+  io.stderr:write("Final timestamp set: " .. rounded_epoch .. " seconds since epoch\n")
+  io.stderr:write("Final timestamp (UTC): " .. os.date("!%Y-%m-%d %H:%M:%S", rounded_epoch) .. "\n")
+  io.stderr:write("Modified JSON written to genesis_timenow.json\n")
+  
+  os.exit(0)
+end
+
+-- Original argument parsing for -g and -r modes
 local dev_key_path = arg[1]
 local seed_file = arg[2]
 local num = tonumber(arg[3])
@@ -313,9 +382,7 @@ elseif mode == "-g" then
 
   -- Output both files with original JSON for array/object preservation
   print(lib_tablesort.encode_sorted(genesis, input_data))
-  local priv_file = assert(io.open("private.json", "w"))
-  priv_file:write(lib_tablesort.encode_sorted(genesis_private, input_data))
-  priv_file:close()
+  write_normalized_json(genesis_private, input_data, "private.json")
 
 else
   show_help()
