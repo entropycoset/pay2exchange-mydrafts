@@ -77,7 +77,7 @@ end
 -- Help message
 local function show_help()
   print([[Usage:
-  lua script.lua dev_key_path seed_file num_witnesses -g input.json timestamp_offset_seconds > output.json
+  lua script.lua dev_key_path seed_file num_witnesses -g input.json timestamp_offset_seconds 2 > output.json
   lua script.lua dev_key_path seed_file num_witnesses -r input.json > output.json
 
   seed_file: Path to a file containing the seed text (10-40 characters) on one line
@@ -92,7 +92,9 @@ local num = tonumber(arg[3])
 local mode = arg[4]
 local input_file = arg[5]
 local timestamp_offset = mode == "-g" and tonumber(arg[6]) or nil
+local mode_version = tonumber(arg[7] or 1)
 
+io.stderr:write("Generates as version: " .. mode_version .. "\n")
 io.stderr:write("Number of witnesses: " .. num .. "\n")
 
 if not (dev_key_path and seed_file and num and mode and input_file) then
@@ -222,8 +224,18 @@ elseif mode == "-g" then
       is_lifetime_member = true
     })
 
+		local owner_in_some_format
+		if (mode_version == 1) then
+			owner_in_some_format = data.owner_addr
+		elseif (mode_version == 2) then
+			owner_in_some_format = data.owner_pub
+		else
+			io.stderr:write("Unknown version: " .. mode_version)
+			os.exit(1)
+		end
+
     table.insert(balances, {
-      owner = data.owner_addr,
+      owner = owner_in_some_format,
       asset_symbol = "BTS",
       amount = 25000 * 100000
     })
