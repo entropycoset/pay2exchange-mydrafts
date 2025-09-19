@@ -1,10 +1,16 @@
 #!/usr/bin/env lua
 
 -- Add the directory of the current script to the package path
-package.path = package.path .. ";./?.lua;../?.lua"
+-- package.path = package.path .. ";./?.lua;../?.lua"
+
+local info = debug.getinfo(1, "S")
+local script_path = info.source:match("@(.*/)")
+package.path = script_path .. "?.lua;" .. package.path
+
 
 local json = require("dkjson")
 local lib_tablesort = require("lib_tablesort")
+local lfs = require("lfs") -- to print cwd
 
 -- Expand tilde (~) in file paths to home directory
 local function expand_path(path)
@@ -96,7 +102,7 @@ local function write_normalized_json(genesis_data, original_input_data, output_f
 end
 
 -- Help message
-local function show_help()
+local function show_help() -- the usage
   print([[Usage:
   lua script.lua dev_key_path seed_file num_witnesses -g input.json timestamp_offset_seconds 2 > output.json
   lua script.lua dev_key_path seed_file num_witnesses -r input.json > output.json
@@ -104,7 +110,7 @@ local function show_help()
 
   -g mode: Generate new genesis file with timestamp offset from current time
   -r mode: Replace placeholders in template file
-  -t mode: Modify existing JSON file's timestamp to specified epoch seconds (rounded to 5-second intervals)
+  -t mode: modify existing genesis timestamp (epoch seconds), save to output genesis: -t 1758292000 /home/x/input.json 
 
   seed_file: Path to a file containing the seed text (10-40 characters) on one line
 ]])
@@ -144,6 +150,7 @@ if mode == "-t" then
   genesis.initial_timestamp = timestamp
   
   -- Output the modified JSON using same sorting/normalization as -g mode
+  print("Current working dir: " .. lfs.currentdir())
   write_normalized_json(genesis, input_data, "genesis_timenow.json")
   
   -- Debug output showing final timestamp

@@ -13,7 +13,7 @@ local mylib_sandboxdir = require("libsandboxdir") -- to have own dir to chdir in
 -- local mylib_libtmpdir = require("libtmpdir") -- to create temp dirs and files - also for modified genesis json
 
 local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
-
+local PATH_SEPARATOR = package.config:sub(1,1)
 ---------------------------------------------------------------------
 
 function help_plan()
@@ -44,6 +44,7 @@ OPTIONS:
   -dry - (dry run).
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
 	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500
+	-tsinit=t - will set the initial timestemp of actually used genesis to time t (unix time, or 'org' to leave unchanged). Default:'org'
 EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 	-netip=x - listen on IP x such as 127.0.0.1 or 0.0.0.0
 ]]
@@ -113,6 +114,20 @@ print ( "os_family: " .. os_family )
 
 ---------------------------------------------------------------------
 
+function extractFilenameFromPath(path)
+    if not path then return nil end
+    -- Handle both Unix-style (/) and Windows-style (\) path separators
+    local filename = path:match("([^/\\]+)$")
+    return filename
+end
+
+function copy_file(src, dst)
+    local cp_result = os.execute("cp " .. src .. " " .. dst)
+    if cp_result ~= 0 then
+        error("Failed to copy file from '" .. src .. "' to '" .. dst .. "'")
+    end
+end
+
 function get_userindex(arg)
   for i, v in ipairs(arg) do
 		local valmin=0
@@ -145,6 +160,23 @@ function get_portindex(arg)
     end
   end
   return -1
+end
+
+function get_initts(arg)
+  for i, v in ipairs(arg) do
+    local n = string.match(v, "^%-initts=(%w+)$")
+    if n then
+      local value = tonumber(n)
+      if n == "org" then
+        return "org"
+      elseif value then
+        return value
+      else
+        error("Invalid initts. Must be unix time or 'org'")
+      end
+    end -- option is given
+  end -- test all option
+  return 'org' -- default
 end
 
 function get_netip(arg)
@@ -280,7 +312,7 @@ function main_start_node(given_arg)
 
 	local userindex = get_userindex(arg)
 
-	local sandboxdir = mylib_sandboxdir:new("var-" .. cfg_role .. "_" .. userindex)
+	local sandboxdir = mylib_sandboxdir:new("run/var-" .. cfg_role .. "_" .. userindex)
 	sandboxdir:start()
 	print("now I am in directory: " .. lfs.currentdir())
 
@@ -311,14 +343,34 @@ function main_start_node(given_arg)
 			bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
 			bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
 	}
-	local genesis_fn = genesis_map[cfg_chain].genesis
+	local genesis_fn_public_normal = genesis_map[cfg_chain].genesis
 	local genesis_fn_private = genesis_map[cfg_chain].private
 
 	if not genesis_map[cfg_chain] then
 			print("Unknown chain: " .. cfg_chain)
 	end
 
-	print("Genesis filename: " .. genesis_fn)
+	print("Genesis filename: " .. genesis_fn_public_normal .. " (original)")
+
+	-- Update tsinit - initial timestamp
+	local initts = get_initts(arg)
+	print("initts=" .. initts)
+	if initts == "org" then
+	    genesis_fn_public_final = genesis_fn_public_normal
+		print("Using original timestamp without any change, will use genesis: " .. genesis_fn_public_final)
+    else
+        -- call script ./makechain-1.lua to update timestamp
+        print("Using custom timestamp: " .. initts)
+        local out = "genesis_timenow.json"
+        os.execute("makechain-1.lua -t " .. initts .. " " .. genesis_fn_public_normal )
+        local mod1 = extractFilenameFromPath(genesis_fn_public_normal:gsub("%.json$", ".mod.json"))
+        -- local mod2 = sandboxdir.dirname .. PATH_SEPARATOR .. mod1 -- not neded sine we changed dir there
+        local genesis_fn_public_mod = mod1
+        print("The mod genesis will be in: " .. genesis_fn_public_mod)
+        copy_file(out, genesis_fn_public_mod)
+        genesis_fn_public_final = genesis_fn_public_mod
+    end
+
 
 	-- Load secret
 	local mykey = { pub = nil, priv = nil }
@@ -364,11 +416,12 @@ function main_start_node(given_arg)
 	end
 
 	-- Construct program arguments
-	local prog = "../programs/witness_node/witness_node"
+	local prog = "../../programs/witness_node/witness_node"
 	local execargs = {
-			"--rpc-endpoint=" .. netip .. ":" .. port1,
-			"--p2p-endpoint=" .. netip .. ":" .. port2,
-			"--genesis-json=" .. genesis_fn_public_normal
+			"--rpc-endpoint=" .. netip .. ":" .. port1
+			,"--p2p-endpoint=" .. netip .. ":" .. port2
+			,"--genesis-json=" .. genesis_fn_public_final
+			,"--enable-stale-production",
 	}
     -- "--enable-stale-production",
 	if mykey.pub or mykey.priv then
