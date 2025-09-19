@@ -18,6 +18,8 @@
 #include <QKeySequence>
 
 #include "myterm.h"
+#include <QIcon>
+#include <QPixmap>
 
 QString expandTilde(const QString &path) {
     if (path == "~") { return QDir::homePath(); }
@@ -255,5 +257,6 @@ TerminalWindowSettings::TerminalWindowSettings(int argc, char **argv) {
     else if (grid_needs<=12) { m_panes_grid_A=4;  m_panes_grid_B=3; }
     else if (grid_needs<=16) { m_panes_grid_A=4;  m_panes_grid_B=4; }
     else { m_panes_grid_A=7;  m_panes_grid_B=5; } // whoah ok there big boy, slow down
-    m_panes_grid_all = m_panes_grid_A * m_panes_grid_B ;
+
+    //m_panes_grid_all = m_panes_grid_A * m_panes_grid_B ;
 }
