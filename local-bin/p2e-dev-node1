@@ -8,13 +8,25 @@ local info = debug.getinfo(1, "S")
 local script_path = info.source:match("@(.*/)")
 package.path = script_path .. "?.lua;" .. package.path
 
-local mylib_simpleexec = require("libsimpleexec")
-local mylib_sandboxdir = require("libsandboxdir")
-
+local mylib_simpleexec = require("libsimpleexec") -- to exec the program
+local mylib_sandboxdir = require("libsandboxdir") -- to have own dir to chdir into and run inside (keep blockchain run data etc)
+-- local mylib_libtmpdir = require("libtmpdir") -- to create temp dirs and files - also for modified genesis json
 
 local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
 
 ---------------------------------------------------------------------
+
+function help_plan()
+	print [[
+
+Directories:
+~/chain-p2e/test-genesis-ec3.json
+~/chain-p2e/devel/test-genesis-ec3/*
+~/chain-p2e/devel/test-genesis-ec3/time.txt
+~/chain-p2e/SECRET/test-genesis-ec3/private.json
+
+]]
+end
 
 function help()
 	print [[
@@ -356,9 +368,9 @@ function main_start_node(given_arg)
 	local execargs = {
 			"--rpc-endpoint=" .. netip .. ":" .. port1,
 			"--p2p-endpoint=" .. netip .. ":" .. port2,
-			"--enable-stale-production",
-			"--genesis-json=" .. genesis_fn
+			"--genesis-json=" .. genesis_fn_public_normal
 	}
+    -- "--enable-stale-production",
 	if mykey.pub or mykey.priv then
 		if not (mykey.pub and mykey.priv) then
 			error("If you set mykey then set all of it.")
@@ -470,7 +482,7 @@ function main_start_node(given_arg)
 end
 
 function main_start_network(given_arg)
-	echo "---XXX--- deprecated"
+	print("---XXX--- deprecated")
 	given_arg = given_arg or {}
 
 	local cfg_chain = given_arg[2] or "default"
@@ -487,7 +499,7 @@ end
 
 main_mode = arg[1]
 if main_mode == "net1" then
-	echo "---XXX--- deprecated"
+	print("---XXX--- deprecated")
 	main_start_network(arg)
 else
 	main_start_node(arg)
