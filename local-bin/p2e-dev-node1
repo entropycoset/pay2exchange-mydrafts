@@ -44,7 +44,7 @@ OPTIONS:
   -dry - (dry run).
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
 	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500
-	-tsinit=t - will set the initial timestemp of actually used genesis to time t (unix time, or 'org' to leave unchanged). Default:'org'
+	-initts=t - will set the initial timestemp of actually used genesis to time t (unix time, or 'org' to leave unchanged). Default:'org'
 EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 	-netip=x - listen on IP x such as 127.0.0.1 or 0.0.0.0
 ]]
@@ -352,7 +352,7 @@ function main_start_node(given_arg)
 
 	print("Genesis filename: " .. genesis_fn_public_normal .. " (original)")
 
-	-- Update tsinit - initial timestamp
+	-- Update initts - initial timestamp
 	local initts = get_initts(arg)
 	print("initts=" .. initts)
 	if initts == "org" then
