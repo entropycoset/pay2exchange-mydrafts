@@ -24,6 +24,7 @@
 
 #include <QShortcut>
 #include <QKeySequence>
+#include <QShowEvent>
 
 #include "myterm.h"
 #include <QIcon>
@@ -43,6 +44,10 @@
 #include <QTextEdit>
 #include <QDateTime>
 #include <QTimer>
+#include <QTabWidget>
+#include <qt5/QtCore/qcompilerdetection.h>
+#include <qt5/QtCore/qglobal.h>
+#include <qt5/QtCore/qobjectdefs.h>
 
 
 QString expandTilde(const QString &path) {
@@ -188,37 +193,103 @@ void error_gui(const QString& message) {
     }
 }
 
-class TerminalWindow : public QMainWindow {
+// Forward declarations
+class TerminalPanel;
+
+// StartupPanel - contains startup log and terminal
+class StartupPanel : public QWidget {
+    Q_OBJECT
+
+private:
+    QTextEdit *logText;
+    MyTerm *startupTerm;
+    TerminalWindowSettings m_settings;
+    bool commandFinished;
+    TerminalPanel *terminalPanel;
+
+public:
+    StartupPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+        : QWidget(parent)
+        , m_settings(settings)
+        , commandFinished(false)
+        , terminalPanel(nullptr)
+    {
+        // main split: log / terminal
+        QSplitter *splitter = new QSplitter(Qt::Vertical, this);
+
+        QVBoxLayout *mainLayout = new QVBoxLayout(this);
+        mainLayout->setContentsMargins(5, 5, 5, 5);
+        mainLayout->addWidget(splitter);
+
+        // the log information
+        logText = new QTextEdit();
+        logText->setReadOnly(true);
+        logText->setPlainText("Startup Log:\n");
+        appendLog("Starting...");
+
+        // terminal doing startup scripts
+        startupTerm = new MyTerm();
+        configure_term(startupTerm, 0);
+
+        splitter->addWidget(logText);
+        splitter->addWidget(startupTerm);
+        splitter->setSizes({200, 400});
+
+        connect(startupTerm, &QTermWidget::finished, this, &StartupPanel::onCommandFinished);
+        appendLog("Layout ot startup.");
+        runStartupCommand();
+        appendLog("Startup constrcuted fully.");
+    }
+
+    void setTerminalPanel(TerminalPanel *panel) {
+        terminalPanel = panel;
+    }
+
+signals:
+    void startupComplete();
+
+private slots:
+    void onCommandFinished() {
+        commandFinished = true;
+        appendLog("Startup command completed.");
+        appendLog("Proceeding to main application.");
+
+        // TODO race condition? check.
+        QTimer::singleShot(0, this, &StartupPanel::startupComplete);
+    }
+
+private:
+    void appendLog(const QString &message) {
+        QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+        logText->append(QString("[%1] %2").arg(timestamp, message));
+        logText->ensureCursorVisible();
+    }
+
+    void runStartupCommand() {
+        appendLog("Running startup command...");
+
+        // Example startup command - modify this to your needs
+        // You can run any command you want here
+        startupTerm->run_cmd("bash", {"-c", "your-initialization-script.sh"}); // TODO
+    }
+};
+
+// TerminalPanel - contains all the terminal grid content
+class TerminalPanel : public QWidget {
+    Q_OBJECT
+
 protected:
     TerminalWindowSettings m_settings;
     QVector<MyTerm*> terminals; ///< the terminal widgets. these are Qt-like objects, they are owned (memory) by the GUI parent etc
     QVector<MyTerm*> terminals_node_any; ///< the terminal widgets that leads to any-node with number N+1 (+1 since numbering is from 1). these are Qt-like objects, they are owned (memory) by the GUI parent etc
+    bool commandsStarted = false;
 
 public:
-
-    bool eventFilter(QObject *obj, QEvent *event) {
-        if (event->type() == QEvent::KeyPress) {
-            QKeyEvent *key = static_cast<QKeyEvent*>(event);
-            if ( ((key->key() == Qt::Key_Escape && key->modifiers() == Qt::AltModifier))
-                || (key->key() == Qt::Key_F9) )
-            {
-                nice_shutdown();
-                return true; // event handled
-            }
-        }
-        return QMainWindow::eventFilter(obj, event);
-    }
-
-    void nice_shutdown() {
-        this->close();
-    }
-
-    TerminalWindow(TerminalWindowSettings settings, QWidget *parent = nullptr)
-        : QMainWindow(parent)
+    TerminalPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+        : QWidget(parent)
         , m_settings(settings)
     {
-        QWidget *central = new QWidget(this);
-        QVBoxLayout *mainLayout = new QVBoxLayout(central);
+        QVBoxLayout *mainLayout = new QVBoxLayout(this);
 
         // Top panel: 3 horizontal sub-panels
         QHBoxLayout *topLayout = new QHBoxLayout();
@@ -272,8 +343,14 @@ public:
 
         mainLayout->addWidget(topWidget);
         mainLayout->addWidget(bottomWidget);
+    }
 
-        setCentralWidget(central);
+    void start_commands() {
+        if (commandsStarted) return;
+        commandsStarted = true;
+
+        // TODO: logical
+        int genesis_timestamp = std::time(nullptr) - 10;
 
         const int free_ipend = proj_count_ports::first_free_ipend_localhost(100,2000,true);
         const std::string run_id = []() {
@@ -281,8 +358,6 @@ public:
             oss << std::time(nullptr) << "-" << getpid() << "-" << (rand() % 90000 + 10000);
             return oss.str();
         }();
-
-        new QShortcut(QKeySequence("F9"), this, SLOT(nice_shutdown()));
 
         using namespace std::string_literals;
 
@@ -367,102 +442,107 @@ public:
 
             if (cmd_run_it) term->run_cmd(QString::fromStdString(cmd), args );
         }
+    }
 
+protected:
+    void showEvent(QShowEvent *event) override {
+        QWidget::showEvent(event);
+
+        // Schedule command execution after the widget is fully shown and sized
+        if (!commandsStarted) {
+            // Use a timer to ensure the layout is fully complete
+            QTimer::singleShot(0, this, &TerminalPanel::start_commands); // TODO race conditions? check.
+        }
     }
 };
 
-class StartupWindow : public QMainWindow {
+// SimulationPanel - contains the tab widget with both startup and terminal panels
+class SimulationPanel : public QWidget {
     Q_OBJECT
 
 private:
-    QTextEdit *logText;
-    MyTerm *startupTerm;
+    QTabWidget *tabWidget;
+    StartupPanel *startupPanel;
+    TerminalPanel *terminalPanel;
     TerminalWindowSettings m_settings;
-    bool commandFinished;
 
 public:
-    StartupWindow(TerminalWindowSettings settings, QWidget *parent = nullptr)
-        : QMainWindow(parent)
+    SimulationPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+        : QWidget(parent)
         , m_settings(settings)
-        , commandFinished(false)
     {
-        setWindowTitle("Startup - QtQuitButton");
-        resize(800, 600);
-
-        QWidget *central = new QWidget(this);
-        setCentralWidget(central);
-
-        // Create a vertical splitter to divide top and bottom
-        QSplitter *splitter = new QSplitter(Qt::Vertical, central);
-        
         // Create main layout
-        QVBoxLayout *mainLayout = new QVBoxLayout(central);
-        mainLayout->setContentsMargins(5, 5, 5, 5);
-        mainLayout->addWidget(splitter);
+        QVBoxLayout *mainLayout = new QVBoxLayout(this);
+        mainLayout->setContentsMargins(0, 0, 0, 0);
+        mainLayout->setSpacing(0);
 
-        // Top part - Read-only text log
-        logText = new QTextEdit();
-        logText->setReadOnly(true);
-        logText->setPlainText("Startup Log:\n");
-        logText->append("Initializing startup sequence...");
-        
-        // Bottom part - Terminal
-        startupTerm = new MyTerm();
-        configure_term(startupTerm, 0);
-        
-        // Add widgets to splitter
-        splitter->addWidget(logText);
-        splitter->addWidget(startupTerm);
-        
-        // Set initial sizes - give more space to terminal
-        splitter->setSizes({200, 400});
+        // Create tab widget
+        tabWidget = new QTabWidget(this);
+        mainLayout->addWidget(tabWidget);
 
-        // Connect terminal finished signal to our slot
-        connect(startupTerm, &QTermWidget::finished, this, &StartupWindow::onCommandFinished);
-        
-        // Log startup info
-        appendLog("Startup window created");
-        appendLog("Ready to run startup command...");
-        
-        // Run your startup command here
-        runStartupCommand();
+        // Create and add startup panel to tab #1
+        startupPanel = new StartupPanel(m_settings);
+        tabWidget->addTab(startupPanel, "Startup");
+
+        // Create and add terminal panel to tab #2
+        terminalPanel = new TerminalPanel(m_settings);
+        tabWidget->addTab(terminalPanel, "Terminal Grid");
+        tabWidget->setCurrentIndex(1);
+
+        // Connect startup completion signal to switch tabs
+        connect(startupPanel, &StartupPanel::startupComplete, this, &SimulationPanel::onStartupComplete);
+
+        // Set terminal panel reference in startup panel
+        startupPanel->setTerminalPanel(terminalPanel);
     }
 
 private slots:
-    void onCommandFinished() {
-        commandFinished = true;
-        appendLog("Startup command completed!");
-        appendLog("Proceeding to main application...");
-        
-        // Wait a moment then proceed to main window
-        QTimer::singleShot(1000, this, &StartupWindow::proceedToMainWindow);
+    void onStartupComplete() {
+        // Switch to terminal grid tab when startup is complete
+        tabWidget->setCurrentIndex(1);
     }
+};
 
-    void proceedToMainWindow() {
-        appendLog("Launching main terminal grid...");
-        
-        // Create and show the main terminal window
-        TerminalWindow *mainWindow = new TerminalWindow(m_settings);
-        mainWindow->resize(800, 600);
-        mainWindow->showMaximized();
-        
-        // Close this startup window
-        this->close();
-    }
+// SimulationWindow - the main window containing the simulation panel
+class SimulationWindow : public QMainWindow {
+    Q_OBJECT
 
 private:
-    void appendLog(const QString &message) {
-        QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-        logText->append(QString("[%1] %2").arg(timestamp, message));
-        logText->ensureCursorVisible();
+    SimulationPanel *simulationPanel;
+    TerminalWindowSettings m_settings;
+
+public:
+    SimulationWindow(TerminalWindowSettings settings, QWidget *parent = nullptr)
+        : QMainWindow(parent)
+        , m_settings(settings)
+    {
+        setWindowTitle("Grid Terminal Simulation");
+        resize(1024, 768);
+
+        // Create and set the simulation panel as central widget
+        simulationPanel = new SimulationPanel(m_settings);
+        setCentralWidget(simulationPanel);
+
+        // Setup keyboard shortcuts
+        new QShortcut(QKeySequence("F9"), this, SLOT(nice_shutdown()));
     }
 
-    void runStartupCommand() {
-        appendLog("Running startup command...");
-        
-        // Example startup command - modify this to your needs
-        // You can run any command you want here
-        startupTerm->run_cmd("bash", {"-c", "your-initialization-script.sh"}); // TODO
+    bool eventFilter(QObject *obj, QEvent *event) {
+        if (event->type() == QEvent::KeyPress) {
+            QKeyEvent *key = static_cast<QKeyEvent*>(event);
+            if ( ((key->key() == Qt::Key_Escape && key->modifiers() == Qt::AltModifier))
+                || (key->key() == Qt::Key_F9) )
+            {
+                nice_shutdown();
+                return true; // event handled
+            }
+        }
+        return QMainWindow::eventFilter(obj, event);
+    }
+
+public slots:
+    void nice_shutdown() {
+        this->close();
     }
 };
 
@@ -481,11 +561,11 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
     TerminalWindowSettings settings(argc,argv);
-    
-    // Create and show startup window instead of main window directly
-    StartupWindow *startupWindow = new StartupWindow(settings);
-    startupWindow->show();
-    
+
+    // Create and show simulation window with tabs
+    SimulationWindow *simulationWindow = new SimulationWindow(settings);
+    simulationWindow->showMaximized();
+
     return app.exec();
 }
 

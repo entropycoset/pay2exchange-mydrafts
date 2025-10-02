@@ -9,7 +9,7 @@ class MyTerm : public QTermWidget {
 
 public:
     using QTermWidget::QTermWidget; // inherit constructors
-    void closeEvent(QCloseEvent *event);
+    void closeEvent(QCloseEvent *event) override;
 
     void run_cmd(QString cmd, std::vector< std::string > args);
 
