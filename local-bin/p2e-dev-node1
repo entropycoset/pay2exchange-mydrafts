@@ -45,6 +45,7 @@ OPTIONS:
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
 	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500
 	-initts=t - will set the initial timestemp of actually used genesis to time t (unix time, or 'org' to leave unchanged). Default:'org'
+	-runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
 EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 	-netip=x - listen on IP x such as 127.0.0.1 or 0.0.0.0
 ]]
@@ -189,6 +190,16 @@ function get_netip(arg)
   return "0.0.0.0"
 end
 
+function get_runsubdir(arg)
+  for i, v in ipairs(arg) do
+    local subdir = string.match(v, "^%-runsubdir=(%S+)$")
+    if subdir then
+      return subdir
+    end
+  end
+  return nil -- no subdir specified
+end
+
 ---------------------------------------------------------------------
 
 local	extract_keys_jsonfile -- (json_fn, target_name)
@@ -311,8 +322,18 @@ function main_start_node(given_arg)
 	end
 
 	local userindex = get_userindex(arg)
+    local runsubdir = get_runsubdir(arg)
+    program_relative = "" -- extra relative path to reach the program, e.g. extra ../ or ../../ to climb more up if we go deep here
 
-	local sandboxdir = mylib_sandboxdir:new("run/var-" .. cfg_role .. "_" .. userindex)
+    local sandbox_path
+    if runsubdir then
+        sandbox_path = "run/" .. runsubdir .. "/var-" .. cfg_role .. "_" .. userindex
+        program_relative = "../"
+    else
+        sandbox_path = "run/var-" .. cfg_role .. "_" .. userindex
+    end
+
+	local sandboxdir = mylib_sandboxdir:new(sandbox_path)
 	sandboxdir:start()
 	print("now I am in directory: " .. lfs.currentdir())
 
@@ -416,7 +437,7 @@ function main_start_node(given_arg)
 	end
 
 	-- Construct program arguments
-	local prog = "../../programs/witness_node/witness_node"
+	local prog = program_relative .. "../../programs/witness_node/witness_node"
 	local execargs = {
 			"--rpc-endpoint=" .. netip .. ":" .. port1
 			,"--p2p-endpoint=" .. netip .. ":" .. port2

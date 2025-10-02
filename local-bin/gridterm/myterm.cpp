@@ -7,9 +7,12 @@
 
 // -------------------------------------------------------
 
+#include <iostream>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QPalette>
+#include <iostream>
+
 
 void addOverlay(QWidget *parent) {
     QLabel *overlay = new QLabel("Overlay text", parent);
@@ -59,6 +62,11 @@ void MyTerm::run_cmd(QString cmd, std::vector< std::string > args) {
         fullcmd = fullcmd + " " + shellQuote( QString::fromStdString(arg) );
     }
     fullcmd = fullcmd + "\r";
+           std::string debug;
+    debug += "Will run command [" + cmd.toStdString() + "] with args:\n";
+    for (const auto &arg: args) { debug += arg + "\n"; }
+    debug += "Full command: [" + fullcmd.toStdString() + "]\n";
+    std::cout << debug;
     this->sendText(fullcmd);
 }
 
