@@ -17,6 +17,10 @@
 #include <sstream>
 #include <ctime>
 #include <cstring>
+#include <QTextEdit>
+#include <QSplitter>
+#include <QTimer>
+#include <QDateTime>
 
 #include <QShortcut>
 #include <QKeySequence>
@@ -34,6 +38,11 @@
 #include <chrono>
 
 #include <QMessageBox>
+
+#include <QSplitter>
+#include <QTextEdit>
+#include <QDateTime>
+#include <QTimer>
 
 
 QString expandTilde(const QString &path) {
@@ -328,12 +337,12 @@ public:
                 args.push_back(this->m_settings.cfg_bc);
                 args.push_back(role_str);
                 args.push_back("-portindex="s + std::to_string(countNode));
-                
+
                 args.push_back("-userindex="s + std::to_string(countNode));
                 args.push_back("-initts="s + std::to_string(genesis_timestamp));
                 args.push_back("-runsubdir="s + (run_id));
                 const std::string netip = [free_ipend]() -> std::string { std::ostringstream oss; oss << "127.0.0." << free_ipend; return oss.str(); }();
-                std::cerr<<"Will use netip=" << netip << std::endl; 
+                std::cerr<<"Will use netip=" << netip << std::endl;
                 args.push_back("-netip="s + netip);
 
                 args.push_back("-e"); // === bewlo are args passed to the node program directly ===
@@ -362,6 +371,101 @@ public:
     }
 };
 
+class StartupWindow : public QMainWindow {
+    Q_OBJECT
+
+private:
+    QTextEdit *logText;
+    MyTerm *startupTerm;
+    TerminalWindowSettings m_settings;
+    bool commandFinished;
+
+public:
+    StartupWindow(TerminalWindowSettings settings, QWidget *parent = nullptr)
+        : QMainWindow(parent)
+        , m_settings(settings)
+        , commandFinished(false)
+    {
+        setWindowTitle("Startup - QtQuitButton");
+        resize(800, 600);
+
+        QWidget *central = new QWidget(this);
+        setCentralWidget(central);
+
+        // Create a vertical splitter to divide top and bottom
+        QSplitter *splitter = new QSplitter(Qt::Vertical, central);
+        
+        // Create main layout
+        QVBoxLayout *mainLayout = new QVBoxLayout(central);
+        mainLayout->setContentsMargins(5, 5, 5, 5);
+        mainLayout->addWidget(splitter);
+
+        // Top part - Read-only text log
+        logText = new QTextEdit();
+        logText->setReadOnly(true);
+        logText->setPlainText("Startup Log:\n");
+        logText->append("Initializing startup sequence...");
+        
+        // Bottom part - Terminal
+        startupTerm = new MyTerm();
+        configure_term(startupTerm, 0);
+        
+        // Add widgets to splitter
+        splitter->addWidget(logText);
+        splitter->addWidget(startupTerm);
+        
+        // Set initial sizes - give more space to terminal
+        splitter->setSizes({200, 400});
+
+        // Connect terminal finished signal to our slot
+        connect(startupTerm, &QTermWidget::finished, this, &StartupWindow::onCommandFinished);
+        
+        // Log startup info
+        appendLog("Startup window created");
+        appendLog("Ready to run startup command...");
+        
+        // Run your startup command here
+        runStartupCommand();
+    }
+
+private slots:
+    void onCommandFinished() {
+        commandFinished = true;
+        appendLog("Startup command completed!");
+        appendLog("Proceeding to main application...");
+        
+        // Wait a moment then proceed to main window
+        QTimer::singleShot(1000, this, &StartupWindow::proceedToMainWindow);
+    }
+
+    void proceedToMainWindow() {
+        appendLog("Launching main terminal grid...");
+        
+        // Create and show the main terminal window
+        TerminalWindow *mainWindow = new TerminalWindow(m_settings);
+        mainWindow->resize(800, 600);
+        mainWindow->showMaximized();
+        
+        // Close this startup window
+        this->close();
+    }
+
+private:
+    void appendLog(const QString &message) {
+        QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
+        logText->append(QString("[%1] %2").arg(timestamp, message));
+        logText->ensureCursorVisible();
+    }
+
+    void runStartupCommand() {
+        appendLog("Running startup command...");
+        
+        // Example startup command - modify this to your needs
+        // You can run any command you want here
+        startupTerm->run_cmd("bash", {"-c", "your-initialization-script.sh"}); // TODO
+    }
+};
+
 int main(int argc, char *argv[]) {
 
     if (argc > 1) {
@@ -377,12 +481,16 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
     TerminalWindowSettings settings(argc,argv);
-    TerminalWindow window(settings);
-    app.installEventFilter(&window);
-    window.resize(800, 600);
-    window.showMaximized();
+    
+    // Create and show startup window instead of main window directly
+    StartupWindow *startupWindow = new StartupWindow(settings);
+    startupWindow->show();
+    
     return app.exec();
 }
+
+// Include the MOC file for the Q_OBJECT macro to work
+#include "main.moc"
 
 TerminalWindowSettings::TerminalWindowSettings(int argc, char **argv) {
     this->program_args.assign(argv, argv + argc);
