@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(QtQuitButton LANGUAGES CXX)
+project(GridTerm LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,19 +12,17 @@ find_package(Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt5 REQUIRED COMPONENTS Core)
 
 
-add_executable(QtQuitButton
+add_executable(GridTerm
     main.cpp
     myterm.cpp
     myterm.h
 )
 
-target_include_directories(QtQuitButton PRIVATE /usr/include/qtermwidget5)
-target_link_libraries(QtQuitButton PRIVATE Qt5::Widgets Qt5::Core qtermwidget5)
+target_include_directories(GridTerm PRIVATE /usr/include/qtermwidget5)
+target_link_libraries(GridTerm PRIVATE Qt5::Widgets Qt5::Core qtermwidget5)
 
 add_custom_target(run
-    COMMAND QtQuitButton ~/code/core/pay2exchange-core ec1 1 5 3
-    DEPENDS QtQuitButton
+    COMMAND GridTerm ~/code/core/pay2exchange-core ec1 1 5 3
+    DEPENDS GridTerm
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
-
-

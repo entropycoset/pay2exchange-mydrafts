@@ -1,0 +1,31 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "local-good-debug",
+      "description": "Debug build with good fast settings",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "MANUAL_SUBMODULES": ""
+      }
+    }
+  ],
+
+  "testPresets": [
+    {
+      "name": "local-good-debug-run",
+      "configurePreset": "local-good-debug",
+      "execution": {
+        "arguments": [
+          "--foo",
+          "--bar"
+        ]
+      }
+    }
+  ]
+}
+
