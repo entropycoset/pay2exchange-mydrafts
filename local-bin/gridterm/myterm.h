@@ -12,6 +12,7 @@ public:
     void closeEvent(QCloseEvent *event) override;
 
     void run_cmd(QString cmd, std::vector< std::string > args);
+    void run_cmd(const std::string &cmd, std::vector< std::string > args);
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;

@@ -56,6 +56,9 @@ static QString shellQuote(const QString &s) {
     return "'" + r + "'";
 }
 
+void MyTerm::run_cmd(const std::string &cmd, std::vector< std::string > args) {
+    run_cmd(QString::fromStdString(cmd), args);
+}
 void MyTerm::run_cmd(QString cmd, std::vector< std::string > args) {
     QString fullcmd = cmd;
     for (const auto & arg : args) {

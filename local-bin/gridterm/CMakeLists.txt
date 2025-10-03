@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(GridTerm LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17) # 17 for std::filesystem
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)  # needed for moc includes
 set(CMAKE_AUTOMOC ON)

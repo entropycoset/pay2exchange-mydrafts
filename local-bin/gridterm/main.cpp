@@ -49,14 +49,17 @@
 #include <qt5/QtCore/qglobal.h>
 #include <qt5/QtCore/qobjectdefs.h>
 
+#include <string>
+#include <sstream>
+#include <filesystem>
+#include <thread>
+#include <fstream>
 
 QString expandTilde(const QString &path) {
     if (path == "~") { return QDir::homePath(); }
     if (path.startsWith("~/")) { return QDir::homePath() + path.mid(1); }
     return path;
 }
-
-
 
 std::string usage() {
     return "program CWD BLOCKCHAIN MYNODE NODES_COUNT_WIT NODES_COUNT_USER \n"
@@ -86,6 +89,22 @@ namespace utils {
             std::chrono::system_clock::now().time_since_epoch().count());
         return mt;
     }
+
+
+
+    template<typename... Args>
+    std::string join_args(const std::string& sep, Args&&... args) {
+        std::ostringstream oss;
+        bool first = true;
+        (void)std::initializer_list<int>{
+            ((first ? (first = false, oss << std::forward<Args>(args))
+                    : (oss << sep << std::forward<Args>(args))),
+             0)...
+          };
+        return oss.str();
+    }
+
+
 }
 
 namespace proj_count_ports {
@@ -166,6 +185,21 @@ void configure_term(QTermWidget *term, int fontsize_add) {
 
 }
 
+/// settings for this simulation/word
+struct WorldSettings {
+    typedef decltype( std::time(nullptr) ) t_timestamp;
+    const t_timestamp genesis_timestamp;
+    std::string chaindid_str; ///< the ChainID but as string with hex
+
+    std::string run_id() const {
+        std::ostringstream oss;
+        oss << std::time(nullptr) << "-" << getpid() << "-" << (rand() % 90000 + 10000);
+        return oss.str();
+    }
+
+    WorldSettings(t_timestamp genesis_timestamp) : genesis_timestamp(genesis_timestamp) { }
+};
+
 struct TerminalWindowSettings {
     std::vector< std::string > program_args;
     int m_count_witness=0, m_count_user=0, m_count_all=0;
@@ -207,10 +241,14 @@ private:
     bool commandFinished;
     TerminalPanel *terminalPanel;
 
+    std::shared_ptr<WorldSettings> world;
+
+    std::filesystem::path chainid_fn; ///< at startup, in this file we will put the chainID
+
 public:
-    StartupPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+    StartupPanel(TerminalWindowSettings settings, std::shared_ptr<WorldSettings> world, QWidget *parent = nullptr)
         : QWidget(parent)
-        , m_settings(settings)
+        , m_settings(settings) , world(world)
         , commandFinished(false)
         , terminalPanel(nullptr)
     {
@@ -259,18 +297,65 @@ private slots:
     }
 
 private:
+    void appendLog(const std::string &message) { this->appendLog(QString::fromStdString(message)); }
+    void appendLog(const char * message) { this->appendLog(std::string(message)); }
     void appendLog(const QString &message) {
+        std::cerr << "LOG: " << message.toStdString() << std::endl << std::flush ;
         QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
         logText->append(QString("[%1] %2").arg(timestamp, message));
         logText->ensureCursorVisible();
     }
 
     void runStartupCommand() {
+        using std::string_literals::operator ""s;
         appendLog("Running startup command...");
 
-        // Example startup command - modify this to your needs
-        // You can run any command you want here
-        startupTerm->run_cmd("bash", {"-c", "your-initialization-script.sh"}); // TODO
+        std::vector<std::string> args;
+        std::string cmd = "p2e-dev-node1";
+        int userindex=0;
+        args.push_back("normal");
+        args.push_back(this->m_settings.cfg_bc);
+        args.push_back("chainid");
+        args.push_back("-userindex="s + std::to_string(userindex));
+        args.push_back("-initts="s + std::to_string(world->genesis_timestamp));
+        const auto runid = world->run_id();
+        args.push_back("-runsubdir="s + runid);
+
+        // file name such as 1759503895-329778-69383/var-chainid_0 :
+        chainid_fn = std::filesystem::path("run") / std::filesystem::path( runid )
+            / std::filesystem::path( std::string("var-") + std::string("chainid_") + std::to_string(userindex) )
+        / "chainid.txt" ;
+        std::ostringstream oss;
+        oss << "Will use chainid_fn=[" << chainid_fn << "] " << " while in CWD=[" << std::filesystem::current_path() << "] \n";
+        oss << "Will run command [" << cmd << "] with args: ";
+        for (const auto & arg : args) { oss << "[" << arg << "]" << " "; }
+        oss << "\n";
+        appendLog(oss.str());
+        startupTerm->run_cmd(cmd, args);
+        appendLog("Command will be run in term...");
+
+        // unsafe race against death of *this ... TODO
+        QTimer::singleShot(100, this, &StartupPanel::next_step_chainid);
+    }
+
+    void next_step_chainid() {
+        bool ready = std::filesystem::exists(chainid_fn);
+        if (!ready) {
+            appendLog("Still waiting for the file to be created.");
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            QTimer::singleShot(100, this, &StartupPanel::next_step_chainid);
+        }
+        else {
+            appendLog("Got the file.");
+            std::ifstream ifs(chainid_fn);
+            std::string chainid;
+            std::getline(ifs, chainid);
+            appendLog("Got chainid=[" + chainid + "]");
+
+
+            // Add a status bar and set initial text
+            window.statusBar()->showMessage("Ready");
+        }
     }
 };
 
@@ -283,11 +368,13 @@ protected:
     QVector<MyTerm*> terminals; ///< the terminal widgets. these are Qt-like objects, they are owned (memory) by the GUI parent etc
     QVector<MyTerm*> terminals_node_any; ///< the terminal widgets that leads to any-node with number N+1 (+1 since numbering is from 1). these are Qt-like objects, they are owned (memory) by the GUI parent etc
     bool commandsStarted = false;
+    std::shared_ptr<WorldSettings> world;
 
 public:
-    TerminalPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+    TerminalPanel(TerminalWindowSettings settings, std::shared_ptr<WorldSettings> _world, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings)
+        , world(_world)
     {
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
 
@@ -349,15 +436,7 @@ public:
         if (commandsStarted) return;
         commandsStarted = true;
 
-        // TODO: logical
-        int genesis_timestamp = std::time(nullptr) - 10;
-
         const int free_ipend = proj_count_ports::first_free_ipend_localhost(100,2000,true);
-        const std::string run_id = []() {
-            std::ostringstream oss;
-            oss << std::time(nullptr) << "-" << getpid() << "-" << (rand() % 90000 + 10000);
-            return oss.str();
-        }();
 
         using namespace std::string_literals;
 
@@ -414,16 +493,16 @@ public:
                 args.push_back("-portindex="s + std::to_string(countNode));
 
                 args.push_back("-userindex="s + std::to_string(countNode));
-                args.push_back("-initts="s + std::to_string(genesis_timestamp));
-                args.push_back("-runsubdir="s + (run_id));
+                args.push_back("-initts="s + std::to_string(world->genesis_timestamp));
+                args.push_back("-runsubdir="s + (world->run_id()));
                 const std::string netip = [free_ipend]() -> std::string { std::ostringstream oss; oss << "127.0.0." << free_ipend; return oss.str(); }();
                 std::cerr<<"Will use netip=" << netip << std::endl;
                 args.push_back("-netip="s + netip);
 
                 args.push_back("-e"); // === bewlo are args passed to the node program directly ===
                 args.push_back("--seed-nodes=[\"" + netip + ":1026\", \"" + netip + ":1028\"]");
-                args.push_back("--exit");
-                args.push_back("--minimal");
+                //args.push_back("--exit");
+                //args.push_back("--minimal");
                 // args.push_back("--net-reuse");
                 //"  witness nr 1 -> p2e-dev-node1 normal ec2 wit01 -portindex=1  -userindex=1\n"
             }
@@ -438,7 +517,7 @@ public:
             info_oss << "Term #"<<(thisTermIx)<< std::left << " role=" << std::setw(6) << role_str
                      << " node=nr-" << countNode  << " wit=nr-" << countNodeWitt << " usr=nr-"<< countNodeUser
                      << "." << std::right;
-            term->run_cmd("echo ", {  info_oss.str() } );
+            term->run_cmd(std::string("echo "), {  info_oss.str() } );
 
             if (cmd_run_it) term->run_cmd(QString::fromStdString(cmd), args );
         }
@@ -476,16 +555,19 @@ public:
         mainLayout->setContentsMargins(0, 0, 0, 0);
         mainLayout->setSpacing(0);
 
+        auto world = std::make_shared<WorldSettings>(std::time(nullptr));
+
         // Create tab widget
         tabWidget = new QTabWidget(this);
         mainLayout->addWidget(tabWidget);
 
         // Create and add startup panel to tab #1
-        startupPanel = new StartupPanel(m_settings);
+        startupPanel = new StartupPanel(m_settings, world);
         tabWidget->addTab(startupPanel, "Startup");
 
         // Create and add terminal panel to tab #2
-        terminalPanel = new TerminalPanel(m_settings);
+
+        terminalPanel = new TerminalPanel(m_settings, world);
         tabWidget->addTab(terminalPanel, "Terminal Grid");
         tabWidget->setCurrentIndex(1);
 

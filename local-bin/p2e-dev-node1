@@ -14,6 +14,8 @@ local mylib_sandboxdir = require("libsandboxdir") -- to have own dir to chdir in
 
 local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
 local PATH_SEPARATOR = package.config:sub(1,1)
+
+local global_filename_for_chainid="chainid.txt" -- this is the default normal name for chainid file, though it will be placed probably in some rundir.
 ---------------------------------------------------------------------
 
 function help_plan()
@@ -36,6 +38,7 @@ p2e-dev-node1 x    - this starts editing this script here
 p2e-dev-node1 MODE CHAIN ROLE OPTIONS... -e EXEC_OPTIONS
 p2e-dev-node1 normal bit node
 p2e-dev-node1 normal ec2 wit01
+p2e-dev-node1 normal ec2 chainid
 p2e-dev-node1 gdb ec2 wit01
 p2e-dev-node1 net1 ec2 4   # XXX  deprecated
 p2e-dev-node1 gdb ec2 wit01
@@ -52,6 +55,15 @@ EXEC_OPTIONS: if there is any option -e, then all following arguments after -e a
 end
 
 ---------------------------------------------------------------------
+
+function table.insert2(t, a, b)
+  if type(t) ~= "table" then
+    error("table.insert2: first argument must be a table", 2)
+  end
+  table.insert(t, a)
+  table.insert(t, b)
+  return t
+end
 
 function begins_with(str, prefix)
 	if (type(str) ~= "string") or (type(prefix) ~= "string") then error("Must call begin_with() with 2 strings.",2) end
@@ -128,6 +140,28 @@ function copy_file(src, dst)
         error("Failed to copy file from '" .. src .. "' to '" .. dst .. "'")
     end
 end
+
+local function show_file_all(path)
+  path = path or "foo.txt"
+  local f, err = io.open(path, "rb")
+  if not f then
+    print("Error opening file:", err)
+    return nil, err
+  end
+
+  local content, read_err = f:read("*a")
+  f:close()
+
+  if not content then
+    print("Error reading file:", read_err or "unknown")
+    return nil, read_err or "unknown"
+  end
+
+  print(content)
+  return true
+end
+
+---------------------------------------------------------------------
 
 function get_userindex(arg)
   for i, v in ipairs(arg) do
@@ -429,6 +463,8 @@ function main_start_node(given_arg)
 		print("You are a witness number: " .. wit_num)
 		mysettings.witness_id = '1.6.' .. tostring(wit_num)
 		mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
+	elseif cfg_role == "chainid" then
+		print("You are just a run of the node to use following utility: get chainid")
 	elseif begins_with(cfg_role, "node") then
 		print("You are just a node (not a witness - not loading wit privkey)")
 	else
@@ -483,13 +519,20 @@ function main_start_node(given_arg)
 		end
 	end
 
+	if cfg_role == "chainid" then
+		table.insert(execargs, "--exit")
+		table.insert(execargs, "--minimal")
+		table.insert2(execargs, "--write-chainid", global_filename_for_chainid)
+	end
+
 	-- Check if witness_node is executable
 	local function file_is_executable(path)
 			return os.execute('[ -x "' .. path .. '" ]') == 0
 	end
 
+	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")	
 	if not file_is_executable(prog) then
-			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable.\n")
+			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
 			os.exit(1)
 	end
 
@@ -538,6 +581,7 @@ function main_start_node(given_arg)
 
 	print("---------------------------------------------------------------------")
 	if run_modes[cfg_mode] then
+			print("Executing the configured mode " .. cfg_mode .. ", role " .. cfg_role )
 			run_modes[cfg_mode]()
 	else
 			print("Unknown mode: " .. cfg_mode)
@@ -550,6 +594,11 @@ function main_start_node(given_arg)
 	print("Done.")
 	print("Was running with args:")
 	show_args(execargs)
+
+	if cfg_role == "chainid" then
+		print("chainid role: before exit, print out the saved ChainID from file=["..global_filename_for_chainid.."] at pwd=[" .. lfs.currentdir() .."]" )
+		show_file_all( global_filename_for_chainid )
+	end
 
 	sandboxdir:finish()
 
