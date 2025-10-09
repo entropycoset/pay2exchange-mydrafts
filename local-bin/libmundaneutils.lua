@@ -111,7 +111,9 @@ local function show_file_all(path)
   return true
 end
 
-
+function file_is_executable(path)
+	return os.execute('[ -x "' .. path .. '" ]') == 0
+end
 ---------------------------------------------------------------------
 
 function get_arg_int(arg, argname, valmin, valmax, isneeded, valdef)
@@ -128,6 +130,20 @@ function get_arg_int(arg, argname, valmin, valmax, isneeded, valdef)
   end
 	if isneeded then
 		error("No value was given for argument ["..argname.."]. (range " .. valmin .. ".." .. valmax .. ")")
+	else
+		return valdef
+  end
+end
+
+function get_arg_str(arg, argname, isneeded, valdef)
+  for i, v in ipairs(arg) do
+    local n = string.match(v, "^%-" .. argname .. "=([\32-\126]+)$")
+    if n then
+      return n
+    end
+  end
+	if isneeded then
+		error("No value was given for argument ["..argname.."].")
 	else
 		return valdef
   end
@@ -178,4 +194,46 @@ function extract_keys_jsonfile(json_fn, target_name)
         print("Can not (fully) load privkeys and data for account (witness): " .. target_name)
     end
 end
+
+
+---------------------------------------------------------------------
+
+-- Required library
+local socket = require("socket")
+
+-- Function to check TCP connection
+function check_tcp_connection(target_ip, target_port, tcp_timeout, verbose)
+	verbose = verbose or 1
+	
+		if (verbose>=2) then print("Checking TPC " .. target_ip .. ":" .. target_port .. " for " .. tcp_timeout .. " sec.") ; end
+    local tcp = assert(socket.tcp())
+    tcp:settimeout(tcp_timeout)
+
+    local success, err = tcp:connect(target_ip, target_port)
+    if success then
+        local sent, send_err = tcp:send("test")
+        tcp:close()
+        local ok = sent ~= nil
+        if ok then 
+					if (verbose>=2) then  print("Connection works"); end
+					return true
+				else
+					if (verbose>=1) then io.stderr:write("FAILED TPC (connect, but can not send) " .. target_ip .. ":" .. target_port .. " for " .. tcp_timeout .. " sec.") ; end
+				 return false
+				end
+        return ok
+    else
+        tcp:close()
+        if (verbose>=1) then  print("FAILED TPC (can not connect) " .. target_ip .. ":" .. target_port .. " for " .. tcp_timeout .. " sec.") ; end
+        return false
+    end
+end
+
+
+function both_or_neither(A,B)
+	if not (A or B) then return true; end -- good - neither
+	if (A and B) then return true; end -- good - both
+	return false -- bad
+end
+---------------------------------------------------------------------
 

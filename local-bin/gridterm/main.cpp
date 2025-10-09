@@ -440,6 +440,7 @@ public:
         using namespace std::string_literals;
 
         int countTerm=0, countNode=0, countNodeWitt=0, countNodeUser=0; // counter: terminals, node(any type), witness node, user nodes
+        int countWallet=50; // also counter of wallets. (start number for testing/visibility)
         for (MyTerm * & term : terminals) {
 
             this->terminals_node_any.push_back(term);
@@ -455,6 +456,7 @@ public:
 
             bool added_witt = false; // we created wittness now?
             bool added_user = false; // we created regular-user now?
+            bool added_wallet = false; // we created wallet client now?
             std::string role_str;
             switch (role) {
                 case is_wit: {
@@ -475,6 +477,7 @@ public:
                 case is_wallet: {
                     cmd = "bash";
                     role_str = "wallet";
+                    added_wallet = true;
                     break;
                 }
                 case is_shell: {
@@ -523,8 +526,20 @@ public:
                 //"  witness nr 1 -> p2e-dev-node1 normal ec2 wit01 -portindex=1  -userindex=1\n"
             }
             else if (role == is_wallet) {
+                // run script:   p2e-wallet n ../../../program/wallet_cli/wallet_cli -runsubdir=moo
+                // with options (after -e) :
                 //  --server-rpc-endpoint=ws://127.0.0.2:1025  --chain-id 996620da58efeea04536c86f23e3490b683381d685716ae02aeee5d29fe69916  --rpc-http-endpoint
-                cmd = "./programs/cli_wallet/cli_wallet";
+
+                const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
+                const auto binary_cmd2 = "../../.."s + binary_cmd1;
+                cmd = "p2e-wallet" ; // out wrapper script
+
+                args.push_back("n"); // our wallet script: n for normal run
+                args.push_back(binary_cmd2); // our wallet script: the wallet binary to run
+                args.push_back("-userindex="s + std::to_string(countWallet));
+                args.push_back("-runsubdir="s + (world->run_id()));
+
+                args.push_back("-e"); // now after -e the options passed on to actuall wallet binary:
                 args.push_back( [&](){ int port=portrpc; std::ostringstream oss; oss<<"--server-rpc-endpoint=ws://127.0.0.2:"<<port; return oss.str(); }() );
 
                 args.push_back("--chain-id");
@@ -534,11 +549,12 @@ public:
                 args.push_back("--rpc-http-endpoint");
                 //args.push_back( [&](){ std::ostringstream oss; oss<<"--rpc-http-endpoint" ; return oss.str(); }() );
             }
-            }
+            } // not skipped
 
             if (added_witt) countNodeWitt++;
             if (added_user) countNodeUser++;
             if (added_user || added_witt) countNode++;
+            if (added_wallet) countWallet++;
             const auto thisTermIx = countTerm;
             countTerm++;
 

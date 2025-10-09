@@ -17,6 +17,7 @@ local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5
 local PATH_SEPARATOR = package.config:sub(1,1)
 
 require("libmundaneutils") -- some simple utils; polutes global namespace
+require("libp2eutils") -- our utils for p2e
 
 ---------------------------------------------------------------------
 
@@ -66,23 +67,6 @@ end
 
 ---------------------------------------------------------------------
 
-function get_userindex(arg)
-  for i, v in ipairs(arg) do
-		local valmin=0
-		local valmax=1000
-    local n = string.match(v, "^%-userindex=(%d+)$")
-    if n then
-      local value = tonumber(n)
-      if value >= valmin and value <= valmax then
-        return value
-      else
-        error("Invalid: " .. value .. ". Must be in range " .. valmin .. ".." .. valmax .. ".")
-      end
-    end
-  end
-  return -1
-end
-
 function get_portindex(arg)
   for i, v in ipairs(arg) do
 	local valmin=0
@@ -127,17 +111,6 @@ function get_netip(arg)
   return "0.0.0.0"
 end
 
-function get_runsubdir(arg)
-  for i, v in ipairs(arg) do
-    local subdir = string.match(v, "^%-runsubdir=(%S+)$")
-    if subdir then
-      return subdir
-    end
-  end
-  return nil -- no subdir specified
-end
-
-
 ---------------------------------------------------------------------
 ---------------------------------------------------------------------
 
@@ -178,11 +151,7 @@ function main_start_node(given_arg)
 			if f then f:close() return true else return false end
 	end
 
-	local function is_executable(path)
-			return os.execute('[ -x "' .. path .. '" ]') == 0
-	end
-
-	if not is_executable("./showargs") then
+	if not file_is_executable("./showargs") then
 			if file_exists("./showargs.cpp") then
 					local res = os.execute("g++ showargs.cpp -o showargs")
 					if res ~= 0 then print("Cannot compile showargs") end
@@ -394,40 +363,14 @@ function main_start_node(given_arg)
 		table.insert2(execargs, "--write-chainid", global_filename_for_chainid)
 	end
 
-	-- Check if witness_node is executable
-	local function file_is_executable(path)
-			return os.execute('[ -x "' .. path .. '" ]') == 0
-	end
-
 	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")
 	if not file_is_executable(prog) then
 			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
 			os.exit(1)
 	end
 
-	local posix = require("posix")
-
-
-	function show_args(args)
-		print("Arguments for program")
-		for _, arg in ipairs(args) do
-				print("  " .. arg)
-		end
-
-		if is_executable("./showargs") then
-				print("-------------------")
-				print("Arguments for program, as printed by a dummy program:")
-				mylib_simpleexec.simple_exec("./showargs", args, true)
-				print("-------------------")
-		end -- if binary showargs
-	end -- our show_args()
-
-	-- print each argument to verify what we try to execute
-	for i, v in ipairs(execargs) do
-		print("ARG[" .. i .. "] = " .. v)
-	end
-	show_args(execargs)
-
+	show_args_bin(execargs)
+	show_args_simple(execargs)
 
 	print("---------------------------------------------------------------------")
 
@@ -473,19 +416,9 @@ function main_start_node(given_arg)
 	for _, v in ipairs(arg) do
 		if v == "-pause" then pause=true; end
 	end
-
-	if pause then
-		local filename = "unpause"
-		local interval = 0.2
-		print("Waiting for " .. filename .. " to appear...")
-		while not lfs.attributes(filename) do
-			socket.sleep(interval)
-		end
-		print("Done waiting - unpause")
-	end
+	if pause then sandboxdir:set_pause(true); end
 
 	sandboxdir:finish()
-
 end
 
 function main_start_network(given_arg)
@@ -511,6 +444,4 @@ if main_mode == "net1" then
 else
 	main_start_node(arg)
 end
-
-
 

@@ -1,0 +1,177 @@
+#!/usr/bin/env luajit
+-- Copyrighted (C) 2025 EntropyCoset on *GPL* licence (at least for now)
+
+local lfs = require("lfs")
+local posix = require("posix")
+local socket = require("socket")
+
+local info = debug.getinfo(1, "S")
+local script_path = info.source:match("@(.*/)")
+package.path = script_path .. "?.lua;" .. package.path
+
+local mylib_simpleexec = require("libsimpleexec") -- to exec the program
+local mylib_sandboxdir = require("libsandboxdir") -- to have own dir to chdir into and run inside (keep blockchain run data etc)
+-- local mylib_libtmpdir = require("libtmpdir") -- to create temp dirs and files - also for modified genesis json
+
+local unpack = table.unpack or unpack -- Make unpack work in both Lua 5.1+ and 5.2+
+local PATH_SEPARATOR = package.config:sub(1,1)
+
+require("libmundaneutils") -- some simple utils; polutes global namespace
+require("libp2eutils")
+
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+function help()
+	print [[
+p2e-wallet h    - this shows help and exits
+
+p2e-wallet n ../../program -e RUNOPT
+  -userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
+  -wait_node_port=port - wait for this port (and IP below) to work (tcp connection) before running this wallet
+  -wait_node_ip=ip
+  -runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
+  - normal run of the wallet. all options after "-e" are passed on to the wallet
+  - as for other options needed for wallet, such as the node-RPC, the wallet-RPC ports, are passed simply after "-e"
+
+]]
+end
+
+---------------------------------------------------------------------
+
+function main_start_wallet(given_arg)
+	given_arg = given_arg or {}
+
+	local cfg_mode = given_arg[1] or "normal"
+	local cfg_walletprog = "../../../programs/cli_wallet/cli_wallet"
+	local cfg_role="wallet"
+	local userindex=nil -- must be set by options
+
+	print("Wallet script: Mode of this script: " .. cfg_mode .. ".")
+	
+	if cfg_mode == "h" then
+		help()
+		os.exit()
+	end
+
+	print([[
+	=====================================================================
+	]])
+
+
+	local userindex = get_userindex(arg)
+	local runsubdir = get_runsubdir(arg)
+	
+	local wait_node_rpc_port = get_arg_int(arg,"wait_node_port",1,65535, false, nil);
+	local wait_node_rpc_ip = get_arg_str(arg,"wait_node_ip",false);
+	
+	if (not both_or_neither(wait_node_rpc_port,wait_node_rpc_ip)) then error("If you provide one of this options then provide all of them: wait node port, ip"); end
+	
+	local sandbox_path
+	if runsubdir then
+			sandbox_path = "run/" .. runsubdir .. "/var-" .. cfg_role .. "_" .. userindex
+	else
+		error("Do provide the option for runsubdir, it is needed to use this wallet-script")
+			-- sandbox_path = "run/var-" .. cfg_role .. "_" .. userindex
+	end
+
+	local sandboxdir = mylib_sandboxdir:new(sandbox_path)
+	sandboxdir:start()
+	print("now I am in directory: " .. lfs.currentdir())
+
+	local home = os.getenv("HOME")
+	
+	if (wait_node_rpc_port) then
+		print("Test the RPC connection to " .. tostring(wait_node_rpc_ip) .. ":" .. tostring(wait_node_rpc_port) .. "...")
+		if not check_tcp_connection(wait_node_rpc_ip, wait_node_rpc_port, 10, 2) then error("The given TCP (for node rpc) is not working - probably the node is not running with that RPC.") end
+	end
+	
+	-- Determine genesis file
+	-- not needed
+	
+	-- Load secret
+	-- not used now too
+
+
+	-- Construct program arguments
+	local prog = cfg_walletprog
+	local execargs = {
+	}
+
+	-- if (netip and port1) then table.insert(execargs, "--rpc-endpoint=" .. netip .. ":" .. port1) ; end
+
+	-- pass extra execargs -e
+	local function args_after_e(args)
+		local found = false
+		local result = {}
+		local found_ix = 0
+		for ix, v in pairs(args) do
+			if found then
+				if ix > found_ix then
+					table.insert(result, v)
+				end
+			elseif v == "-e" then
+				found = true
+				found_ix = ix
+			end
+		end
+		return result
+	end
+
+	local after_e = args_after_e(arg)
+	if #after_e > 0 then
+		for i = 1, #after_e do
+				execargs[#execargs + 1] = after_e[i]
+		end
+	end
+
+	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")
+	if not file_is_executable(prog) then
+			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
+			os.exit(1)
+	end
+	
+	show_args_simple(execargs)
+
+	print("---------------------------------------------------------------------")
+
+	local run_modes={}
+
+	for _, v in ipairs(arg) do
+		if v == "-dry" then print("Dry run requested. See args above. Exiting.\n") os.exit(0) end
+	end
+
+	run_modes.n = function()
+			mylib_simpleexec.simple_exec(prog, execargs, true);
+	end
+	run_modes.normal = run_modes.n
+	run_modes.gdb = function()
+			mylib_simpleexec.simple_exec("gdb", {"--args", prog, unpack(execargs)}, true);
+	end
+
+	print("---------------------------------------------------------------------")
+	if run_modes[cfg_mode] then
+			print("Executing the configured mode " .. cfg_mode .. ", role " .. cfg_role )
+			run_modes[cfg_mode]()
+	else
+			print("Unknown mode: " .. cfg_mode)
+	end
+
+	print([[
+	---------------------------------------------------------------------
+	]])
+
+	print("Done.")
+	print("Was running with args:")
+	show_args_simple(execargs)
+
+	pause=false
+	for _, v in ipairs(arg) do
+		if v == "-pause" then pause=true; end
+	end
+	if pause then sandboxdir:set_pause(true); end
+
+	sandboxdir:finish()
+end  -- main_start_wallet
+
+main_start_wallet(arg)

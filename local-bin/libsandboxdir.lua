@@ -11,7 +11,8 @@ function SandboxDir:new(dirname)
 
     local obj = {
         dirname = dirname,
-        original_cwd = lfs.currentdir()
+        original_cwd = lfs.currentdir(),
+        pause = false -- should we pause at end?
     }
     setmetatable(obj, self)
     return obj
@@ -36,9 +37,9 @@ local function mkdir_recursive(path)
         if not (attr and attr.mode == "directory") then
             local success = lfs.mkdir(current_path)
             if not success then
-                error("Failed to create directory: " .. current_path)
+                error("Sandbox: Failed to create directory: " .. current_path)
             end
-            print("Created directory:", current_path)
+            print("Sandbox: Created directory:", current_path)
         end
     end
 end
@@ -49,20 +50,35 @@ function SandboxDir:start()
     if not (attr and attr.mode == "directory") then
         mkdir_recursive(self.dirname)
         assert(os.execute("chmod 700 " .. self.dirname), "Failed to set permissions.")
-        print("Set permissions for directory:", self.dirname)
+        print("Sandbox: Set permissions for directory:", self.dirname)
     else
-        print("Directory already exists:", self.dirname)
+        print("Sandbox: Directory already exists:", self.dirname)
     end
 
     assert(lfs.chdir(self.dirname), "Failed to change working directory.")
-    print("Entered directory:", lfs.currentdir())
+    print("Sandbox: Entered directory:", lfs.currentdir())
+end
+
+function SandboxDir:set_pause(p)
+	self.pause = p
 end
 
 -- Recursively delete directory and restore original CWD
 function SandboxDir:finish()
-		print("Ending work in directory " .. self.dirname)
+
+	if self.pause then
+			local filename = "unpause"
+			local interval = 0.2
+			print("Sandbox: Waiting for " .. filename .. " to appear...")
+			while not lfs.attributes(filename) do
+				socket.sleep(interval)
+			end
+			print("Sandbox: Done waiting - unpause")
+		end
+
+		print("Sandbox: Ending work in directory " .. self.dirname)
     assert(lfs.chdir(self.original_cwd), "Failed to restore original working directory.")
-    print("Restored working directory to:", self.original_cwd)
+    print("Sandbox: Restored working directory to:", self.original_cwd)
 
     local function recursive_delete_contents(path)
 				--print("delete: " .. path)
@@ -85,7 +101,7 @@ function SandboxDir:finish()
     -- Only delete the target directory itself, not parent directories
     recursive_delete_contents(self.dirname)
     assert(os.remove(self.dirname), "Failed to remove target directory: " .. self.dirname)
-    print("Deleted directory and contents:", self.dirname)
+    print("Sandbox: Deleted directory and contents:", self.dirname)
 end
 
 -- Return the class as the module
