@@ -21,6 +21,7 @@
 #include <QSplitter>
 #include <QTimer>
 #include <QDateTime>
+#include <QStatusBar>
 
 #include <QShortcut>
 #include <QKeySequence>
@@ -209,9 +210,10 @@ struct TerminalWindowSettings {
 
     std::string cfg_cwd, cfg_bc;
     int cfg_mynode, cfg_nodes_wit, cfg_nodes_user;
+    std::string chainid;
 };
 
-    
+
 void error_gui(const QString& message) {
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Critical);
@@ -237,16 +239,17 @@ class StartupPanel : public QWidget {
 private:
     QTextEdit *logText;
     MyTerm *startupTerm;
-    TerminalWindowSettings m_settings;
+    std::shared_ptr<TerminalWindowSettings> m_settings;
     bool commandFinished;
     TerminalPanel *terminalPanel;
 
     std::shared_ptr<WorldSettings> world;
 
     std::filesystem::path chainid_fn; ///< at startup, in this file we will put the chainID
+    std::filesystem::path chainid_sandboxdir; ///< the sandbox dir used by the instance that at startup gets the chainid
 
 public:
-    StartupPanel(TerminalWindowSettings settings, std::shared_ptr<WorldSettings> world, QWidget *parent = nullptr)
+    StartupPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> world, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings) , world(world)
         , commandFinished(false)
@@ -293,38 +296,52 @@ private slots:
         appendLog("Proceeding to main application.");
 
         // TODO race condition? check.
-        QTimer::singleShot(0, this, &StartupPanel::startupComplete);
+        QTimer::singleShot(50, this, &StartupPanel::startupComplete);
     }
 
 private:
-    void appendLog(const std::string &message) { this->appendLog(QString::fromStdString(message)); }
-    void appendLog(const char * message) { this->appendLog(std::string(message)); }
-    void appendLog(const QString &message) {
+    void appendLog(const std::string &message, int level=0) { this->appendLog(QString::fromStdString(message),level); }
+    void appendLog(const char * message, int level=0) { this->appendLog(std::string(message),level); }
+    void appendLog(const QString &message, int level=0) {
         std::cerr << "LOG: " << message.toStdString() << std::endl << std::flush ;
         QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
         logText->append(QString("[%1] %2").arg(timestamp, message));
+
+        logText->moveCursor(QTextCursor::End);
+
+        //QTextCursor cursor = logText->textCursor();
+        //cursor.movePosition(QTextCursor::End);
         logText->ensureCursorVisible();
+        if (level>=2) {
+            QMainWindow *mw = qobject_cast<QMainWindow*>(this->window());
+            //assert(mw);
+            if (mw) {
+                mw->statusBar()->showMessage(message);
+            }
+        }
     }
 
     void runStartupCommand() {
         using std::string_literals::operator ""s;
-        appendLog("Running startup command...");
+        appendLog("Running startup commands...");
 
+        appendLog("Running startup command to get ChainID");
         std::vector<std::string> args;
         std::string cmd = "p2e-dev-node1";
         int userindex=0;
         args.push_back("normal");
-        args.push_back(this->m_settings.cfg_bc);
+        args.push_back(this->m_settings->cfg_bc);
         args.push_back("chainid");
         args.push_back("-userindex="s + std::to_string(userindex));
         args.push_back("-initts="s + std::to_string(world->genesis_timestamp));
         const auto runid = world->run_id();
         args.push_back("-runsubdir="s + runid);
+        args.push_back("-pause");
 
         // file name such as 1759503895-329778-69383/var-chainid_0 :
-        chainid_fn = std::filesystem::path("run") / std::filesystem::path( runid )
-            / std::filesystem::path( std::string("var-") + std::string("chainid_") + std::to_string(userindex) )
-        / "chainid.txt" ;
+        this->chainid_sandboxdir = std::filesystem::path("run") / std::filesystem::path( runid )
+            / std::filesystem::path( std::string("var-") + std::string("chainid_") + std::to_string(userindex) ) ;
+        this->chainid_fn = chainid_sandboxdir / "chainid.txt" ;
         std::ostringstream oss;
         oss << "Will use chainid_fn=[" << chainid_fn << "] " << " while in CWD=[" << std::filesystem::current_path() << "] \n";
         oss << "Will run command [" << cmd << "] with args: ";
@@ -334,29 +351,11 @@ private:
         startupTerm->run_cmd(cmd, args);
         appendLog("Command will be run in term...");
 
-        // unsafe race against death of *this ... TODO
-        QTimer::singleShot(100, this, &StartupPanel::next_step_chainid);
+        // unsafe race against death of *this ... TODO (upgrade this to live as shared_ptr? or?)
+        QTimer::singleShot(50, this, &StartupPanel::next_step_chainid);
     }
 
-    void next_step_chainid() {
-        bool ready = std::filesystem::exists(chainid_fn);
-        if (!ready) {
-            appendLog("Still waiting for the file to be created.");
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            QTimer::singleShot(100, this, &StartupPanel::next_step_chainid);
-        }
-        else {
-            appendLog("Got the file.");
-            std::ifstream ifs(chainid_fn);
-            std::string chainid;
-            std::getline(ifs, chainid);
-            appendLog("Got chainid=[" + chainid + "]");
-
-
-            // Add a status bar and set initial text
-            window.statusBar()->showMessage("Ready");
-        }
-    }
+    void next_step_chainid();
 };
 
 // TerminalPanel - contains all the terminal grid content
@@ -364,14 +363,14 @@ class TerminalPanel : public QWidget {
     Q_OBJECT
 
 protected:
-    TerminalWindowSettings m_settings;
+    std::shared_ptr<TerminalWindowSettings> m_settings;
     QVector<MyTerm*> terminals; ///< the terminal widgets. these are Qt-like objects, they are owned (memory) by the GUI parent etc
     QVector<MyTerm*> terminals_node_any; ///< the terminal widgets that leads to any-node with number N+1 (+1 since numbering is from 1). these are Qt-like objects, they are owned (memory) by the GUI parent etc
     bool commandsStarted = false;
     std::shared_ptr<WorldSettings> world;
 
 public:
-    TerminalPanel(TerminalWindowSettings settings, std::shared_ptr<WorldSettings> _world, QWidget *parent = nullptr)
+    TerminalPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> _world, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings)
         , world(_world)
@@ -396,7 +395,7 @@ public:
         // TODO: logical
         int genesis_timestamp = std::time(nullptr) - 10;
 
-        for (int i = 0; i < this->m_settings.m_panes_big; ++i) {
+        for (int i = 0; i < this->m_settings->m_panes_big; ++i) {
             QWidget *panel = new QWidget();
             QVBoxLayout *panelLayout = new QVBoxLayout(panel);
             panelLayout->setContentsMargins(1, 1, 1, 1);
@@ -408,8 +407,8 @@ public:
         }
 
         // Bottom panel: the AxB grid
-        for (int row = 0; row < this->m_settings.m_panes_grid_B; ++row) {
-            for (int col = 0; col < this->m_settings.m_panes_grid_A; ++col) {
+        for (int row = 0; row < this->m_settings->m_panes_grid_B; ++row) {
+            for (int col = 0; col < this->m_settings->m_panes_grid_A; ++col) {
                 QWidget *panel = new QWidget();
                 QVBoxLayout *panelLayout = new QVBoxLayout(panel);
                 panelLayout->setContentsMargins(1, 1, 1, 1);
@@ -432,22 +431,22 @@ public:
         mainLayout->addWidget(bottomWidget);
     }
 
-    void start_commands() {
-        if (commandsStarted) return;
-        commandsStarted = true;
+    void start_commands(int step) {
+        //if (commandsStarted) return;
+        //commandsStarted = true;
 
         const int free_ipend = proj_count_ports::first_free_ipend_localhost(100,2000,true);
 
         using namespace std::string_literals;
 
         int countTerm=0, countNode=0, countNodeWitt=0, countNodeUser=0; // counter: terminals, node(any type), witness node, user nodes
-        for (const auto & term : terminals) {
+        for (MyTerm * & term : terminals) {
 
             this->terminals_node_any.push_back(term);
             enum { is_wit, is_usr, is_wallet, is_shell } role = is_shell;
 
-            if (countNodeUser < m_settings.m_count_user) role = is_usr;
-            if (countNodeWitt < m_settings.m_count_witness) role = is_wit; // wit01 and such
+            if (countNodeUser < m_settings->m_count_user) role = is_usr;
+            if (countNodeWitt < m_settings->m_count_witness) role = is_wit; // wit01 and such
             if (countTerm == 1) role = is_wallet;
 
             std::vector<std::string> args;
@@ -485,12 +484,30 @@ public:
                     break;
                 }
             }
+            bool skip=false;
+            switch (step) {
+                case 1: { if (role==is_wallet) skip=true; } break;
+                case 2: { if (role!=is_wallet) skip=true; } break;
+            }
+
+
+            if ((role == is_wallet) && (step == 1)) {
+                term->run_cmd("echo"s, {"Wait... (getting ChainID)"});
+ //               term->run_cmd(QString::fromStdString("echo"),   );
+            }
+
+            if (! skip) {
+                int portindex = countNode;
+                int portrpc = 1025 + portindex*2 +0;
+                int portp2p = 1025 + portindex*2 +1;
 
             if ((role == is_wit)||(role == is_usr)) {
                 args.push_back("normal");
-                args.push_back(this->m_settings.cfg_bc);
+                args.push_back(this->m_settings->cfg_bc);
                 args.push_back(role_str);
-                args.push_back("-portindex="s + std::to_string(countNode));
+                //args.push_back("-portindex="s + std::to_string(countNode));
+                args.push_back("-portp2p="s + std::to_string(portp2p));
+                args.push_back("-portrpc="s + std::to_string(portrpc));
 
                 args.push_back("-userindex="s + std::to_string(countNode));
                 args.push_back("-initts="s + std::to_string(world->genesis_timestamp));
@@ -498,13 +515,25 @@ public:
                 const std::string netip = [free_ipend]() -> std::string { std::ostringstream oss; oss << "127.0.0." << free_ipend; return oss.str(); }();
                 std::cerr<<"Will use netip=" << netip << std::endl;
                 args.push_back("-netip="s + netip);
-
-                args.push_back("-e"); // === bewlo are args passed to the node program directly ===
+                args.push_back("-e"); // === below are args passed to the node program directly ===
                 args.push_back("--seed-nodes=[\"" + netip + ":1026\", \"" + netip + ":1028\"]");
                 //args.push_back("--exit");
                 //args.push_back("--minimal");
                 // args.push_back("--net-reuse");
                 //"  witness nr 1 -> p2e-dev-node1 normal ec2 wit01 -portindex=1  -userindex=1\n"
+            }
+            else if (role == is_wallet) {
+                //  --server-rpc-endpoint=ws://127.0.0.2:1025  --chain-id 996620da58efeea04536c86f23e3490b683381d685716ae02aeee5d29fe69916  --rpc-http-endpoint
+                cmd = "./programs/cli_wallet/cli_wallet";
+                args.push_back( [&](){ int port=portrpc; std::ostringstream oss; oss<<"--server-rpc-endpoint=ws://127.0.0.2:"<<port; return oss.str(); }() );
+
+                args.push_back("--chain-id");
+                args.push_back(this->m_settings->chainid);
+                //args.push_back( [&](){ std::ostringstream oss; oss<<"--chain-id" << ' ' << this->m_settings.chainid; return oss.str(); }() );
+
+                args.push_back("--rpc-http-endpoint");
+                //args.push_back( [&](){ std::ostringstream oss; oss<<"--rpc-http-endpoint" ; return oss.str(); }() );
+            }
             }
 
             if (added_witt) countNodeWitt++;
@@ -513,6 +542,7 @@ public:
             const auto thisTermIx = countTerm;
             countTerm++;
 
+            if (!skip) {
             std::ostringstream info_oss;
             info_oss << "Term #"<<(thisTermIx)<< std::left << " role=" << std::setw(6) << role_str
                      << " node=nr-" << countNode  << " wit=nr-" << countNodeWitt << " usr=nr-"<< countNodeUser
@@ -520,6 +550,7 @@ public:
             term->run_cmd(std::string("echo "), {  info_oss.str() } );
 
             if (cmd_run_it) term->run_cmd(QString::fromStdString(cmd), args );
+            }
         }
     }
 
@@ -530,7 +561,7 @@ protected:
         // Schedule command execution after the widget is fully shown and sized
         if (!commandsStarted) {
             // Use a timer to ensure the layout is fully complete
-            QTimer::singleShot(0, this, &TerminalPanel::start_commands); // TODO race conditions? check.
+            QTimer::singleShot(0, this, [this](){ TerminalPanel::start_commands(1); } ); // TODO race conditions? check.
         }
     }
 };
@@ -543,10 +574,10 @@ private:
     QTabWidget *tabWidget;
     StartupPanel *startupPanel;
     TerminalPanel *terminalPanel;
-    TerminalWindowSettings m_settings;
+    std::shared_ptr<TerminalWindowSettings> m_settings;
 
 public:
-    SimulationPanel(TerminalWindowSettings settings, QWidget *parent = nullptr)
+    SimulationPanel(std::shared_ptr<TerminalWindowSettings> settings, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings)
     {
@@ -591,10 +622,10 @@ class SimulationWindow : public QMainWindow {
 
 private:
     SimulationPanel *simulationPanel;
-    TerminalWindowSettings m_settings;
+    std::shared_ptr<TerminalWindowSettings> m_settings;
 
 public:
-    SimulationWindow(TerminalWindowSettings settings, QWidget *parent = nullptr)
+    SimulationWindow(std::shared_ptr<TerminalWindowSettings> settings, QWidget *parent = nullptr)
         : QMainWindow(parent)
         , m_settings(settings)
     {
@@ -642,7 +673,7 @@ int main(int argc, char *argv[]) {
     }
 
     QApplication app(argc, argv);
-    TerminalWindowSettings settings(argc,argv);
+    std::shared_ptr<TerminalWindowSettings> settings = std::make_shared<TerminalWindowSettings>(argc,argv);
 
     // Create and show simulation window with tabs
     SimulationWindow *simulationWindow = new SimulationWindow(settings);
@@ -686,4 +717,29 @@ TerminalWindowSettings::TerminalWindowSettings(int argc, char **argv) {
     else { m_panes_grid_A=7;  m_panes_grid_B=5; } // whoah ok there big boy, slow down
 
     //m_panes_grid_all = m_panes_grid_A * m_panes_grid_B ;
+}
+
+void StartupPanel::next_step_chainid() {
+    bool ready = std::filesystem::exists(chainid_fn);
+    if (!ready) {
+        appendLog("Still waiting for the file to be created.");
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        QTimer::singleShot(250, this, &StartupPanel::next_step_chainid);
+    }
+    else {
+        appendLog("Got the file with chainid");
+        {
+            std::ifstream ifs(chainid_fn);
+            std::string chainid;
+            std::getline(ifs, chainid);
+            this->m_settings->chainid = chainid;
+            appendLog("Got chainid=[" + chainid + "]", 2);
+            //this->terminalPanel->start_commands(2);
+            QTimer::singleShot(50, this, [this](){ this->terminalPanel->start_commands(2); } ); // TODO race conditions? check.
+        }
+        { // unpause the node that calculated sandbox, so it can die now
+            auto const unpause_fn = this->chainid_sandboxdir / "unpause";
+            std::ofstream ofs(unpause_fn);
+        }
+    }
 }

@@ -3,6 +3,7 @@
 
 local lfs = require("lfs")
 local posix = require("posix")
+local socket = require("socket")
 
 local info = debug.getinfo(1, "S")
 local script_path = info.source:match("@(.*/)")
@@ -36,6 +37,7 @@ p2e-dev-node1 h    - this shows help and exits
 p2e-dev-node1 d    - delete the run data
 p2e-dev-node1 x    - this starts editing this script here
 p2e-dev-node1 MODE CHAIN ROLE OPTIONS... -e EXEC_OPTIONS
+
 p2e-dev-node1 normal bit node
 p2e-dev-node1 normal ec2 wit01
 p2e-dev-node1 normal ec2 chainid
@@ -46,13 +48,17 @@ p2e-dev-node1 gdb ec2 wit01
 OPTIONS:
   -dry - (dry run).
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
-	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500
+	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500. use this or set -portp2p and -portrpc
+	-portp2p=x - will use this value as P2P port (use this or -portindex)
+	-portrpc=x - will use this value as RPC port (use this or -portindex)
 	-initts=t - will set the initial timestemp of actually used genesis to time t (unix time, or 'org' to leave unchanged). Default:'org'
 	-runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
-EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 	-netip=x - listen on IP x such as 127.0.0.1 or 0.0.0.0
+	-pause - at end of program will wait until file "unpause" (empty) is created in the rundir (sandbox dir) before deleting sandbox/files
+EXEC_OPTIONS: if there is any option -e, then all following arguments after -e are passed into the node program
 ]]
 end
+
 
 ---------------------------------------------------------------------
 
@@ -91,7 +97,7 @@ end
 
 local function detect_os()
   local windows_slash = package.config:sub(1,1) == '\\' ;
-  
+
   if jit and jit.os then
 		print("Read jit.os [" .. jit.os .. "]")
     if jit.os == "Windows" then
@@ -182,19 +188,38 @@ end
 
 function get_portindex(arg)
   for i, v in ipairs(arg) do
-		local valmin=0
-		local valmax=460
+	local valmin=0
+	local valmax=460
     local n = string.match(v, "^%-portindex=(%d+)$")
     if n then
       local port = tonumber(n)
       if port >= valmin and port <= valmax then
         return port
       else
-        error("Invalid port index: " .. port .. ". Must be in range " .. valmin .. ".." .. valmax .. ".")
+        error("Invalid port index: " .. port .. ". Must be in range " .. valmin .. ".." .. valmax)
       end
     end
   end
-  return -1
+  return nil
+end
+
+function get_arg_int(arg, argname, valmin, valmax, isneeded, valdef)
+  for i, v in ipairs(arg) do
+    local n = string.match(v, "^%-"..argname.."=(%d+)$")
+    if n then
+      local port = tonumber(n)
+      if port >= valmin and port <= valmax then
+        return port
+      else
+        error("Invalid value of ["..argname.."] = " .. port .. ". Must be in range " .. valmin .. ".." .. valmax)
+      end
+    end
+  end
+	if isneeded then
+		error("No value was given for argument ["..argname.."]. (range " .. valmin .. ".." .. valmax .. ")")
+	else
+		return valdef
+  end
 end
 
 function get_initts(arg)
@@ -372,18 +397,29 @@ function main_start_node(given_arg)
 	print("now I am in directory: " .. lfs.currentdir())
 
 	local portindex = get_portindex(arg)
-	local port1
-	local port2
-	if portindex == -1 then
-		print("Generate random ports")
-		local r1 = good_rand(970)
-		port1 = r1 + 1025
-		port2 = port1 + 1
+	local p1 = get_arg_int(arg,"portrpc",1,65535, false, nil);
+	local p2 = get_arg_int(arg,"portp2p",1,65535, false, nil);
+	if (portindex) and (p1 or p2) then error("Do not provide at same time arguments portindex as well as portrpc/portp2p") ; end
+	if (not portindex) and (not(p1 or p2)) then print("Warning: ports are not specified") ; end  -- allowed for non-node use such as calculating chainid
+	-- error("Provide either arguments portindex or (portrpc/portp2p)") ; end
+
+	local port1,port2
+
+	if portindex ~= nil then
+		if portindex == -1 then
+			print("Generate random ports")
+			local r1 = good_rand(970)
+			port1 = r1 + 1025
+			port2 = port1 + 1
+		else
+			port1 = portindex*2 + 1025;
+			port2 = port1 + 1;
+		end
 	else
-		port1 = portindex*2 + 1025;		
-		port2 = port1 + 1;	
+		port1=p1
+		port2=p2
 	end
-	print("port1=" .. port1 .. " port2=" .. port2)
+	if (port1 and port2) then print("port1=" .. port1 .. " port2=" .. port2) else print("Ports not given"); end
 	local netip = get_netip(arg)
 
 	local home = os.getenv("HOME")
@@ -475,11 +511,14 @@ function main_start_node(given_arg)
 	-- Construct program arguments
 	local prog = program_relative .. "../../programs/witness_node/witness_node"
 	local execargs = {
-			"--rpc-endpoint=" .. netip .. ":" .. port1
-			,"--p2p-endpoint=" .. netip .. ":" .. port2
-			,"--genesis-json=" .. genesis_fn_public_final
+			"--genesis-json=" .. genesis_fn_public_final
 			,"--enable-stale-production",
 	}
+
+	if (netip and port1) then table.insert(execargs, "--rpc-endpoint=" .. netip .. ":" .. port1) ; end
+	if (netip and port2) then table.insert(execargs, "--p2p-endpoint=" .. netip .. ":" .. port2) ; end
+
+
     -- "--enable-stale-production",
 	if mykey.pub or mykey.priv then
 		if not (mykey.pub and mykey.priv) then
@@ -530,7 +569,7 @@ function main_start_node(given_arg)
 			return os.execute('[ -x "' .. path .. '" ]') == 0
 	end
 
-	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")	
+	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")
 	if not file_is_executable(prog) then
 			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
 			os.exit(1)
@@ -598,6 +637,21 @@ function main_start_node(given_arg)
 	if cfg_role == "chainid" then
 		print("chainid role: before exit, print out the saved ChainID from file=["..global_filename_for_chainid.."] at pwd=[" .. lfs.currentdir() .."]" )
 		show_file_all( global_filename_for_chainid )
+	end
+
+	pause=false
+	for _, v in ipairs(arg) do
+		if v == "-pause" then pause=true; end
+	end
+
+	if pause then
+		local filename = "unpause"
+		local interval = 0.2
+		print("Waiting for " .. filename .. " to appear...")
+		while not lfs.attributes(filename) do
+			socket.sleep(interval)
+		end
+		print("Done waiting - unpause")
 	end
 
 	sandboxdir:finish()
