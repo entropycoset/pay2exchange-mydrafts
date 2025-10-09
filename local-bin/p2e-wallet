@@ -24,15 +24,15 @@ require("libp2eutils")
 
 function help()
 	print [[
-p2e-wallet h    - this shows help and exits
+p2e-wallet h		- this shows help and exits
 
 p2e-wallet n ../../program -e RUNOPT
-  -userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
-  -wait_node_port=port - wait for this port (and IP below) to work (tcp connection) before running this wallet
-  -wait_node_ip=ip
-  -runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
-  - normal run of the wallet. all options after "-e" are passed on to the wallet
-  - as for other options needed for wallet, such as the node-RPC, the wallet-RPC ports, are passed simply after "-e"
+	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
+	-wait_node_port=port - wait for this port (and IP below) to work (tcp connection) before running this wallet
+	-wait_node_ip=ip
+	-runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
+	- normal run of the wallet. all options after "-e" are passed on to the wallet
+	- as for other options needed for wallet, such as the node-RPC, the wallet-RPC ports, are passed simply after "-e"
 
 ]]
 end
@@ -48,7 +48,7 @@ function main_start_wallet(given_arg)
 	local userindex=nil -- must be set by options
 
 	print("Wallet script: Mode of this script: " .. cfg_mode .. ".")
-	
+
 	if cfg_mode == "h" then
 		help()
 		os.exit()
@@ -61,12 +61,12 @@ function main_start_wallet(given_arg)
 
 	local userindex = get_userindex(arg)
 	local runsubdir = get_runsubdir(arg)
-	
+
 	local wait_node_rpc_port = get_arg_int(arg,"wait_node_port",1,65535, false, nil);
 	local wait_node_rpc_ip = get_arg_str(arg,"wait_node_ip",false);
-	
+
 	if (not both_or_neither(wait_node_rpc_port,wait_node_rpc_ip)) then error("If you provide one of this options then provide all of them: wait node port, ip"); end
-	
+
 	local sandbox_path
 	if runsubdir then
 			sandbox_path = "run/" .. runsubdir .. "/var-" .. cfg_role .. "_" .. userindex
@@ -80,15 +80,15 @@ function main_start_wallet(given_arg)
 	print("now I am in directory: " .. lfs.currentdir())
 
 	local home = os.getenv("HOME")
-	
+
 	if (wait_node_rpc_port) then
 		print("Test the RPC connection to " .. tostring(wait_node_rpc_ip) .. ":" .. tostring(wait_node_rpc_port) .. "...")
 		if not check_tcp_connection(wait_node_rpc_ip, wait_node_rpc_port, 10, 2) then error("The given TCP (for node rpc) is not working - probably the node is not running with that RPC.") end
 	end
-	
+
 	-- Determine genesis file
 	-- not needed
-	
+
 	-- Load secret
 	-- not used now too
 
@@ -130,7 +130,7 @@ function main_start_wallet(given_arg)
 			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
 			os.exit(1)
 	end
-	
+
 	show_args_simple(execargs)
 
 	print("---------------------------------------------------------------------")
@@ -172,6 +172,6 @@ function main_start_wallet(given_arg)
 	if pause then sandboxdir:set_pause(true); end
 
 	sandboxdir:finish()
-end  -- main_start_wallet
+end	 -- main_start_wallet
 
 main_start_wallet(arg)

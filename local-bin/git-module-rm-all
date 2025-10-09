@@ -11,16 +11,16 @@ git submodule deinit -f .
 submodules=$(git config --file .gitmodules --get-regexp path | awk '{ print $2 }')
 
 for sub in $submodules; do
-  full="$repo_root/$sub"
-  canon=$(realpath -m "$full" 2>/dev/null || readlink -f "$full" 2>/dev/null)
-  targ_slash="${canon%/}/"
+	full="$repo_root/$sub"
+	canon=$(realpath -m "$full" 2>/dev/null || readlink -f "$full" 2>/dev/null)
+	targ_slash="${canon%/}/"
 
-  if [[ "$targ_slash" == "$root_slash"* && -d "$canon" ]]; then
-    echo "Removing safely: $canon"
-    rm -rf -- "$canon"
-  else
-    echo "Skipping outside path: $canon"
-  fi
+	if [[ "$targ_slash" == "$root_slash"* && -d "$canon" ]]; then
+		echo "Removing safely: $canon"
+		rm -rf -- "$canon"
+	else
+		echo "Skipping outside path: $canon"
+	fi
 done
 
 echo "All submodules cleaned up safely."

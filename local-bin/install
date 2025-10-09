@@ -13,7 +13,7 @@ do
 		echo "${prog} - already installed "
 	else
 		echo "${prog}- installing"
-		ln -s "${PWD}/${prog}" 	"${localbin}/" || echo "Failed to link"
+		ln -s "${PWD}/${prog}"	"${localbin}/" || echo "Failed to link"
 	fi
 
 done

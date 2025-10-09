@@ -38,20 +38,20 @@ end
 
 function help()
 	print [[
-p2e-dev-node1 h    - this shows help and exits
-p2e-dev-node1 d    - delete the run data
-p2e-dev-node1 x    - this starts editing this script here
+p2e-dev-node1 h		 - this shows help and exits
+p2e-dev-node1 d		 - delete the run data
+p2e-dev-node1 x		 - this starts editing this script here
 p2e-dev-node1 MODE CHAIN ROLE OPTIONS... -e EXEC_OPTIONS
 
 p2e-dev-node1 normal bit node
 p2e-dev-node1 normal ec2 wit01
 p2e-dev-node1 normal ec2 chainid
 p2e-dev-node1 gdb ec2 wit01
-p2e-dev-node1 net1 ec2 4   # XXX  deprecated
+p2e-dev-node1 net1 ec2 4	 # XXX	deprecated
 p2e-dev-node1 gdb ec2 wit01
 
 OPTIONS:
-  -dry - (dry run).
+	-dry - (dry run).
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
 	-portindex=x - will set the value of port1 and port2 to be e.g. 1025+x*2 (to +1) set it to 0..500. use this or set -portp2p and -portrpc
 	-portp2p=x - will use this value as P2P port (use this or -portindex)
@@ -68,47 +68,47 @@ end
 ---------------------------------------------------------------------
 
 function get_portindex(arg)
-  for i, v in ipairs(arg) do
+	for i, v in ipairs(arg) do
 	local valmin=0
 	local valmax=460
-    local n = string.match(v, "^%-portindex=(%d+)$")
-    if n then
-      local port = tonumber(n)
-      if port >= valmin and port <= valmax then
-        return port
-      else
-        error("Invalid port index: " .. port .. ". Must be in range " .. valmin .. ".." .. valmax)
-      end
-    end
-  end
-  return nil
+		local n = string.match(v, "^%-portindex=(%d+)$")
+		if n then
+			local port = tonumber(n)
+			if port >= valmin and port <= valmax then
+				return port
+			else
+				error("Invalid port index: " .. port .. ". Must be in range " .. valmin .. ".." .. valmax)
+			end
+		end
+	end
+	return nil
 end
 
 function get_initts(arg)
-  for i, v in ipairs(arg) do
-    local n = string.match(v, "^%-initts=(%w+)$")
-    if n then
-      local value = tonumber(n)
-      if n == "org" then
-        return "org"
-      elseif value then
-        return value
-      else
-        error("Invalid initts. Must be unix time or 'org'")
-      end
-    end -- option is given
-  end -- test all option
-  return 'org' -- default
+	for i, v in ipairs(arg) do
+		local n = string.match(v, "^%-initts=(%w+)$")
+		if n then
+			local value = tonumber(n)
+			if n == "org" then
+				return "org"
+			elseif value then
+				return value
+			else
+				error("Invalid initts. Must be unix time or 'org'")
+			end
+		end -- option is given
+	end -- test all option
+	return 'org' -- default
 end
 
 function get_netip(arg)
-  for i, v in ipairs(arg) do
-    local n = string.match(v, "^%-netip=(%S+)$")
-    if n then
+	for i, v in ipairs(arg) do
+		local n = string.match(v, "^%-netip=(%S+)$")
+		if n then
 			return n
-	  end
+		end
 	end
-  return "0.0.0.0"
+	return "0.0.0.0"
 end
 
 ---------------------------------------------------------------------
@@ -171,7 +171,7 @@ function main_start_node(given_arg)
 			return rnd % (max + 1)
 	end
 
-  -- old
+	-- old
 	print("Cleanup of old run data (delete / remove) - the old format (not sandbox)")
 	os.execute("rm -rf ./witness_node_data_dir/") -- No check, will continue on error
 	if cfg_mode == "d" then
@@ -180,16 +180,16 @@ function main_start_node(given_arg)
 	end
 
 	local userindex = get_userindex(arg)
-    local runsubdir = get_runsubdir(arg)
-    program_relative = "" -- extra relative path to reach the program, e.g. extra ../ or ../../ to climb more up if we go deep here
+		local runsubdir = get_runsubdir(arg)
+		program_relative = "" -- extra relative path to reach the program, e.g. extra ../ or ../../ to climb more up if we go deep here
 
-    local sandbox_path
-    if runsubdir then
-        sandbox_path = "run/" .. runsubdir .. "/var-" .. cfg_role .. "_" .. userindex
-        program_relative = "../"
-    else
-        sandbox_path = "run/var-" .. cfg_role .. "_" .. userindex
-    end
+		local sandbox_path
+		if runsubdir then
+				sandbox_path = "run/" .. runsubdir .. "/var-" .. cfg_role .. "_" .. userindex
+				program_relative = "../"
+		else
+				sandbox_path = "run/var-" .. cfg_role .. "_" .. userindex
+		end
 
 	local sandboxdir = mylib_sandboxdir:new(sandbox_path)
 	sandboxdir:start()
@@ -199,7 +199,7 @@ function main_start_node(given_arg)
 	local p1 = get_arg_int(arg,"portrpc",1,65535, false, nil);
 	local p2 = get_arg_int(arg,"portp2p",1,65535, false, nil);
 	if (portindex) and (p1 or p2) then error("Do not provide at same time arguments portindex as well as portrpc/portp2p") ; end
-	if (not portindex) and (not(p1 or p2)) then print("Warning: ports are not specified") ; end  -- allowed for non-node use such as calculating chainid
+	if (not portindex) and (not(p1 or p2)) then print("Warning: ports are not specified") ; end	 -- allowed for non-node use such as calculating chainid
 	-- error("Provide either arguments portindex or (portrpc/portp2p)") ; end
 
 	local port1,port2
@@ -227,11 +227,11 @@ function main_start_node(given_arg)
 	local genesis_map = {
 			default = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil },
 			p2e1 = { genesis = home .. "/chain-p2e/test-genesis-p2e1.json", private = nil }, -- the private json is somewhere (todo?)
-			ec1  = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
-			ec2  = { genesis = home .. "/chain-p2e/test-genesis-ec2.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec2/private.json" },
-			ec3  = { genesis = home .. "/chain-p2e/test-genesis-ec3.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec3/private.json" },
-			bit2  = { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
-			bit  = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
+			ec1	 = { genesis = home .. "/chain-p2e/test-genesis-ec1.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec1/private.json" },
+			ec2	 = { genesis = home .. "/chain-p2e/test-genesis-ec2.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec2/private.json" },
+			ec3	 = { genesis = home .. "/chain-p2e/test-genesis-ec3.json", private = home .. "/chain-p2e/SECRET/test-genesis-ec3/private.json" },
+			bit2	= { genesis = home .. "/chain-p2e/bitshares1-mod.json", private = nil }, -- real bitshares main chain
+			bit	 = { genesis = home .. "/chain-p2e/bitshares1.json", private = nil }, -- real bitshares main chain
 	}
 	local genesis_fn_public_normal = genesis_map[cfg_chain].genesis
 	local genesis_fn_private = genesis_map[cfg_chain].private
@@ -246,20 +246,20 @@ function main_start_node(given_arg)
 	local initts = get_initts(arg)
 	print("initts=" .. initts)
 	if initts == "org" then
-	    genesis_fn_public_final = genesis_fn_public_normal
+			genesis_fn_public_final = genesis_fn_public_normal
 		print("Using original timestamp without any change, will use genesis: " .. genesis_fn_public_final)
-    else
-        -- call script ./makechain-1.lua to update timestamp
-        print("Using custom timestamp: " .. initts)
-        local out = "genesis_timenow.json"
-        os.execute("makechain-1.lua -t " .. initts .. " " .. genesis_fn_public_normal )
-        local mod1 = extractFilenameFromPath(genesis_fn_public_normal:gsub("%.json$", ".mod.json"))
-        -- local mod2 = sandboxdir.dirname .. PATH_SEPARATOR .. mod1 -- not neded sine we changed dir there
-        local genesis_fn_public_mod = mod1
-        print("The mod genesis will be in: " .. genesis_fn_public_mod)
-        copy_file(out, genesis_fn_public_mod)
-        genesis_fn_public_final = genesis_fn_public_mod
-    end
+		else
+				-- call script ./makechain-1.lua to update timestamp
+				print("Using custom timestamp: " .. initts)
+				local out = "genesis_timenow.json"
+				os.execute("makechain-1.lua -t " .. initts .. " " .. genesis_fn_public_normal )
+				local mod1 = extractFilenameFromPath(genesis_fn_public_normal:gsub("%.json$", ".mod.json"))
+				-- local mod2 = sandboxdir.dirname .. PATH_SEPARATOR .. mod1 -- not neded sine we changed dir there
+				local genesis_fn_public_mod = mod1
+				print("The mod genesis will be in: " .. genesis_fn_public_mod)
+				copy_file(out, genesis_fn_public_mod)
+				genesis_fn_public_final = genesis_fn_public_mod
+		end
 
 
 	-- Load secret
@@ -318,7 +318,7 @@ function main_start_node(given_arg)
 	if (netip and port2) then table.insert(execargs, "--p2p-endpoint=" .. netip .. ":" .. port2) ; end
 
 
-    -- "--enable-stale-production",
+		-- "--enable-stale-production",
 	if mykey.pub or mykey.priv then
 		if not (mykey.pub and mykey.priv) then
 			error("If you set mykey then set all of it.")
@@ -329,7 +329,7 @@ function main_start_node(given_arg)
 	end
 
 	if mysettings.witness_id then
-		table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..  '"')
+		table.insert(execargs, '--witness-id="' .. mysettings.witness_id ..	 '"')
 	end
 
 	-- pass extra execargs -e
@@ -431,7 +431,7 @@ function main_start_network(given_arg)
 	print("role count: " .. cfg_rolecount)
 
 	for i = 1, cfg_rolecount do
-    local role = string.format("wit%02d", i)
+		local role = string.format("wit%02d", i)
 		print("role: " .. role)
 	end
 end
