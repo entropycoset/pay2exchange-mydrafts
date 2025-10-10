@@ -10,7 +10,36 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER_LAUNCHER": "ccache",
                 "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-                "MANUAL_SUBMODULES": ""
+                "MANUAL_SUBMODULES": "",
+                "GRIDTERM_CWD": "~/code/core/pay2exchange-core",
+                "GRIDTERM_BLOCKCHAIN": "ec2",
+                "GRIDTERM_MYNODE": "1",
+                "GRIDTERM_NODES_WIT": "2",
+                "GRIDTERM_NODES_USER": "1"
+            }
+        },
+        {
+            "name": "local-good-debug-testing",
+            "description": "Debug build with testing configuration (more nodes)",
+            "inherits": "local-good-debug",
+            "cacheVariables": {
+                "GRIDTERM_CWD": "~/code/core/pay2exchange-core",
+                "GRIDTERM_BLOCKCHAIN": "ec2",
+                "GRIDTERM_MYNODE": "1",
+                "GRIDTERM_NODES_WIT": "4",
+                "GRIDTERM_NODES_USER": "3"
+            }
+        },
+        {
+            "name": "local-good-debug-minimal",
+            "description": "Debug build with minimal configuration (fewer nodes)",
+            "inherits": "local-good-debug",
+            "cacheVariables": {
+                "GRIDTERM_CWD": "~/code/core/pay2exchange-core",
+                "GRIDTERM_BLOCKCHAIN": "ec2",
+                "GRIDTERM_MYNODE": "1",
+                "GRIDTERM_NODES_WIT": "1",
+                "GRIDTERM_NODES_USER": "1"
             }
         },
         {
@@ -22,7 +51,12 @@
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
                 "CMAKE_C_COMPILER": "/usr/bin/clang-18",
                 "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "GRIDTERM_CWD": "~/code/core/pay2exchange-core",
+                "GRIDTERM_BLOCKCHAIN": "ec2",
+                "GRIDTERM_MYNODE": "1",
+                "GRIDTERM_NODES_WIT": "2",
+                "GRIDTERM_NODES_USER": "1"
             }
         }
     ],
@@ -30,6 +64,16 @@
         {
             "name": "local-good-debug-build",
             "configurePreset": "local-good-debug",
+            "targets": ["run"]
+        },
+        {
+            "name": "local-good-debug-testing-build",
+            "configurePreset": "local-good-debug-testing",
+            "targets": ["run"]
+        },
+        {
+            "name": "local-good-debug-minimal-build",
+            "configurePreset": "local-good-debug-minimal",
             "targets": ["run"]
         },
         {
