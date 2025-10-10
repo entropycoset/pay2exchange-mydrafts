@@ -229,11 +229,33 @@ function check_tcp_connection(target_ip, target_port, tcp_timeout, verbose)
 		end
 end
 
+function retry_few_times(action, tmax, sleep)
+		local tstart = socket.gettime()
+		while true do
+				local telaps = socket.gettime() - tstart;
+				local telaps_str = string.format("%.2f", telaps);
+				if telaps > tmax then print("Failed - giving up after " .. telaps_str .. " sec" .. ".") ; return false ; end
+				local done = action()
+				if done then
+					print("Succees after " .. telaps_str .. " sec" .. ".")
+					return true
+        else
+            print("Retrying... (" .. telaps_str .. "/" .. tmax .. " secs" .. ")")
+        end
+        socket.sleep(sleep)
+    end
+    exit("dead code")
+end
+
+---------------------------------------------------------------------
+
 
 function both_or_neither(A,B)
 	if not (A or B) then return true; end -- good - neither
 	if (A and B) then return true; end -- good - both
 	return false -- bad
 end
+
+
 ---------------------------------------------------------------------
 

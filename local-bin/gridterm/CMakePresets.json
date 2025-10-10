@@ -1,31 +1,50 @@
 {
-  "version": 3,
-  "configurePresets": [
-    {
-      "name": "local-good-debug",
-      "description": "Debug build with good fast settings",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/${presetName}",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
-        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "MANUAL_SUBMODULES": ""
-      }
-    }
-  ],
-
-  "testPresets": [
-    {
-      "name": "local-good-debug-run",
-      "configurePreset": "local-good-debug",
-      "execution": {
-        "arguments": [
-          "--foo",
-          "--bar"
-        ]
-      }
-    }
-  ]
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "local-good-debug",
+            "description": "Debug build with good fast settings",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+                "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+                "MANUAL_SUBMODULES": ""
+            }
+        },
+        {
+            "name": "clang-18-debug",
+            "displayName": "Clang 18.1.3 x86_64-pc-linux-gnu",
+            "description": "Using compilers: C = /usr/bin/clang-18, CXX = /usr/bin/clang++-18",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "/usr/bin/clang-18",
+                "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "local-good-debug-build",
+            "configurePreset": "local-good-debug",
+            "targets": ["run"]
+        },
+        {
+            "name": "clang-18-debug-build",
+            "configurePreset": "clang-18-debug",
+            "targets": ["run"]
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "local-good-debug-test",
+            "configurePreset": "local-good-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
 }
-

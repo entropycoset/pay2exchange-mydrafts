@@ -62,8 +62,8 @@ function main_start_wallet(given_arg)
 	local userindex = get_userindex(arg)
 	local runsubdir = get_runsubdir(arg)
 
-	local wait_node_rpc_port = get_arg_int(arg,"wait_node_port",1,65535, false, nil);
-	local wait_node_rpc_ip = get_arg_str(arg,"wait_node_ip",false);
+	local wait_node_rpc_port = get_arg_int(arg,"-wait_node_port",1,65535, false, nil);
+	local wait_node_rpc_ip = get_arg_str(arg,"-wait_node_ip",false);
 
 	if (not both_or_neither(wait_node_rpc_port,wait_node_rpc_ip)) then error("If you provide one of this options then provide all of them: wait node port, ip"); end
 
@@ -81,9 +81,16 @@ function main_start_wallet(given_arg)
 
 	local home = os.getenv("HOME")
 
+	print("wait_node_rpc_port : " .. tostring(wait_node_rpc_port))
 	if (wait_node_rpc_port) then
-		print("Test the RPC connection to " .. tostring(wait_node_rpc_ip) .. ":" .. tostring(wait_node_rpc_port) .. "...")
-		if not check_tcp_connection(wait_node_rpc_ip, wait_node_rpc_port, 10, 2) then error("The given TCP (for node rpc) is not working - probably the node is not running with that RPC.") end
+		print("Test the RPC connection to " .. tostring(wait_node_rpc_ip) .. ":" .. tostring(wait_node_rpc_port) .. "...")		
+		local good = retry_few_times(
+			function()
+				return check_tcp_connection(wait_node_rpc_ip, wait_node_rpc_port, 10, 2)
+			end
+			, 30, 1
+		)
+		if not good then error("The given TCP (for node rpc) is not working - probably the node is not running with that RPC.") end
 	end
 
 	-- Determine genesis file

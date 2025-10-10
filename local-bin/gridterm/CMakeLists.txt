@@ -1,3 +1,4 @@
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 cmake_minimum_required(VERSION 3.16)
 project(GridTerm LANGUAGES CXX)
 
@@ -16,13 +17,14 @@ add_executable(GridTerm
     main.cpp
     myterm.cpp
     myterm.h
+		loopbackfinder.h loopbackfinder.cpp
 )
 
 target_include_directories(GridTerm PRIVATE /usr/include/qtermwidget5)
 target_link_libraries(GridTerm PRIVATE Qt5::Widgets Qt5::Core qtermwidget5)
 
 add_custom_target(run
-    COMMAND GridTerm ~/code/core/pay2exchange-core ec1 1 5 3
+    COMMAND GridTerm ~/code/core/pay2exchange-core ec2 1 2 1
     DEPENDS GridTerm
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
