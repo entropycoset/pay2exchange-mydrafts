@@ -1,60 +1,45 @@
 #include <QApplication>
-#include <array>
-#include <string>
 #include <QMainWindow>
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QVector>
-#include <qtermwidget.h>
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QDir>
 #include <QDebug>
-#include <iostream>
-#include <iomanip>
-#include <sstream>
-#include <ctime>
-#include <cstring>
 #include <QTextEdit>
 #include <QSplitter>
 #include <QTimer>
 #include <QDateTime>
 #include <QStatusBar>
-
 #include <QShortcut>
 #include <QKeySequence>
 #include <QShowEvent>
-
-#include "myterm.h"
 #include <QIcon>
 #include <QPixmap>
+#include <QMessageBox>
+#include <QTabWidget>
+#include <qtermwidget.h>
+#include "myterm.h"
+#include "loopbackfinder.h"
 
-#include <unistd.h>    // For getpid()
-#include <cstdlib>     // For rand()
-#include <ctime>       // For std::time()
-#include <sstream>     // For std::ostringstream (oss)
-
+// Standard library includes
+#include <array>
+#include <string>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
+#include <cstring>
+#include <cstdlib>
 #include <random>
 #include <chrono>
-
-#include <QMessageBox>
-
-#include <QSplitter>
-#include <QTextEdit>
-#include <QDateTime>
-#include <QTimer>
-#include <QTabWidget>
-#include <qt5/QtCore/qcompilerdetection.h>
-#include <qt5/QtCore/qglobal.h>
-#include <qt5/QtCore/qobjectdefs.h>
-
-#include <string>
-#include <sstream>
 #include <filesystem>
 #include <thread>
 #include <fstream>
+#include <unistd.h>
 
 QString expandTilde(const QString &path) {
     if (path == "~") { return QDir::homePath(); }
@@ -113,6 +98,12 @@ namespace proj_count_ports {
     // dumb and insecure grep
 
     int first_free_ipend_localhost(const int LOW, const int HIGH, bool debug=false) {
+        LoopbackFinder finder;
+        int result = finder.find_free(1000, 2000, 0);
+        return result;
+    }
+
+    int first_free_ipend_localhost_old(const int LOW, const int HIGH, bool debug=false) {
         std::array<bool, 256> occ{};
         occ.fill(false);
 
@@ -211,6 +202,7 @@ struct TerminalWindowSettings {
     std::string cfg_cwd, cfg_bc;
     int cfg_mynode, cfg_nodes_wit, cfg_nodes_user;
     std::string chainid;
+    int main_ip_seg=-1; // the segment X in 127.0.0.X to be used as free IP for localhost for this world test
 };
 
 
@@ -435,7 +427,8 @@ public:
         //if (commandsStarted) return;
         //commandsStarted = true;
 
-        const int free_ipend = proj_count_ports::first_free_ipend_localhost(100,2000,true);
+        this->m_settings->main_ip_seg = proj_count_ports::first_free_ipend_localhost(100,2000,true);
+        const int free_ipend = this->m_settings->main_ip_seg;
 
         using namespace std::string_literals;
 
@@ -505,6 +498,9 @@ public:
                 int portp2p = 1025 + portindex*2 +1;
 
             if ((role == is_wit)||(role == is_usr)) {
+
+                term->run_cmd("sleep"s , {"1"s});
+
                 args.push_back("normal");
                 args.push_back(this->m_settings->cfg_bc);
                 args.push_back(role_str);
@@ -529,6 +525,8 @@ public:
                 // run script:   p2e-wallet n ../../../program/wallet_cli/wallet_cli -runsubdir=moo
                 // with options (after -e) :
                 //  --server-rpc-endpoint=ws://127.0.0.2:1025  --chain-id 996620da58efeea04536c86f23e3490b683381d685716ae02aeee5d29fe69916  --rpc-http-endpoint
+                const std::string use_node_rpc_host = "127.0.0."s + std::to_string(free_ipend);
+                const int use_node_rpc_port = portrpc;
 
                 const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
                 const auto binary_cmd2 = "../../.."s + binary_cmd1;
@@ -539,8 +537,12 @@ public:
                 args.push_back("-userindex="s + std::to_string(countWallet));
                 args.push_back("-runsubdir="s + (world->run_id()));
 
+                args.push_back("-wait_node_ip="s + use_node_rpc_host);
+                args.push_back("-wait_node_port="s + std::to_string(use_node_rpc_port));
+
                 args.push_back("-e"); // now after -e the options passed on to actuall wallet binary:
-                args.push_back( [&](){ int port=portrpc; std::ostringstream oss; oss<<"--server-rpc-endpoint=ws://127.0.0.2:"<<port; return oss.str(); }() );
+                args.push_back( [&](){ std::ostringstream oss;
+                    oss<<"--server-rpc-endpoint=ws://"<<use_node_rpc_host<<":"<<use_node_rpc_port; return oss.str(); }() );
 
                 args.push_back("--chain-id");
                 args.push_back(this->m_settings->chainid);
