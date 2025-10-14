@@ -430,13 +430,13 @@ public:
         if (step == 1) {
             // appendLog("Finding the first free localhost IP segment...");
             this->m_settings->main_ip_seg = proj_count_ports::first_free_ipend_localhost(100,2000,true);
-            const int free_ipend = this->m_settings->main_ip_seg;
             // appendLog("Found free localhost IP segment: " + std::to_string(free_ipend), 2);
         }
         if (this->m_settings->main_ip_seg < 0) {
             error_gui("Error: Could not find free localhost IP segment. Cannot continue.");
             return;
         }
+        const int free_ipend = this->m_settings->main_ip_seg;
 
         using namespace std::string_literals;
 
