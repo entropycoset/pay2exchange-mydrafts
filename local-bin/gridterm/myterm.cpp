@@ -1,4 +1,4 @@
-#include "myterm.h"
+#include "myterm.hpp"
 
 
 #include <QShortcut>

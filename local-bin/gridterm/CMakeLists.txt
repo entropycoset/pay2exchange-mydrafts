@@ -16,8 +16,8 @@ find_package(Qt5 REQUIRED COMPONENTS Core)
 add_executable(GridTerm
     main.cpp
     myterm.cpp
-    myterm.h
-		loopbackfinder.h loopbackfinder.cpp
+    myterm.hpp
+	loopbackfinder.h loopbackfinder.cpp
 )
 
 target_include_directories(GridTerm PRIVATE /usr/include/qtermwidget5)

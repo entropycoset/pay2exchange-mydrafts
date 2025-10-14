@@ -22,7 +22,7 @@
 #include <QMessageBox>
 #include <QTabWidget>
 #include <qtermwidget.h>
-#include "myterm.h"
+#include "myterm.hpp"
 #include "loopbackfinder.h"
 
 // Standard library includes
