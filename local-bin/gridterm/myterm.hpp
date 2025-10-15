@@ -1,5 +1,8 @@
 #pragma once
-#include <qtermwidget.h>
+//#include <qtermwidget.h>
+//#include <qtermwidget.h
+#include <qtermwidget6/qtermwidget.h>
+// /usr/include/qtermwidget6/qtermwidget.h
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <vector>
