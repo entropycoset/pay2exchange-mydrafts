@@ -58,6 +58,23 @@
                 "GRIDTERM_NODES_WIT": "2",
                 "GRIDTERM_NODES_USER": "1"
             }
+        },
+        {
+            "name": "clang-20-debug",
+            "displayName": "Clang 20 x86_64-pc-linux-gnu",
+            "description": "Using compilers: C = /usr/bin/clang-20, CXX = /usr/bin/clang++-20",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "/usr/bin/clang-20",
+                "CMAKE_CXX_COMPILER": "/usr/bin/clang++-20",
+                "CMAKE_BUILD_TYPE": "Debug",
+                "GRIDTERM_CWD": "~/code/core/pay2exchange-core",
+                "GRIDTERM_BLOCKCHAIN": "ec2",
+                "GRIDTERM_MYNODE": "1",
+                "GRIDTERM_NODES_WIT": "2",
+                "GRIDTERM_NODES_USER": "1"
+            }
         }
     ],
     "buildPresets": [
@@ -79,6 +96,11 @@
         {
             "name": "clang-18-debug-build",
             "configurePreset": "clang-18-debug",
+            "targets": ["run"]
+        },
+        {
+            "name": "clang-20-debug-build",
+            "configurePreset": "clang-20-debug",
             "targets": ["run"]
         }
     ],

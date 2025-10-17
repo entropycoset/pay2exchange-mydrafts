@@ -16,7 +16,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
 # Try to find qtermwidget-qt6 via pkg-config; fall back to system paths if pkg-config not available
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-	pkg_check_modules(QTERMWIDGET QUIET qtermwidget-qt6)
+	pkg_check_modules(QTERMWIDGET QUIET qtermwidget6)
 endif()
 
 if(QTERMWIDGET_FOUND)
@@ -27,9 +27,9 @@ if(QTERMWIDGET_FOUND)
 	set(QTERMWIDGET_CFLAGS_OTHER ${QTERMWIDGET_CFLAGS_OTHER})
 else()
 	# Fallback: common system include and library names for qtermwidget6
-	message(STATUS "pkg-config qtermwidget-qt6 not found; using fallback include /usr/include/qtermwidget6 and library qtermwidget")
+	message(STATUS "pkg-config qtermwidget6 not found; using fallback include /usr/include/qtermwidget6 and library qtermwidget6")
 	set(QTERMWIDGET_INCLUDE_DIRS /usr/include/qtermwidget6)
-	set(QTERMWIDGET_LIBRARIES qtermwidget)
+	set(QTERMWIDGET_LIBRARIES qtermwidget6)
 	set(QTERMWIDGET_CFLAGS_OTHER "")
 endif()
 
