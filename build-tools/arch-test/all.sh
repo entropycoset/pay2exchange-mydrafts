@@ -6,11 +6,11 @@ trap 'echo "Script failed at line $LINENO (while/after step: '$global_step') - i
 
 function step() {
 	global_step="$*"
-	print "Step: $*"
+	printf "Step: $* \n"
 }
 
 function fatal() {
-	print "Error: $*"
+	printf "Error: $* \n"
 	exit 1
 }
 
