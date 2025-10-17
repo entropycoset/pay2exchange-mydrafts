@@ -20,7 +20,12 @@ opt_logfn="$PWD/log.txt"
 step "clear log" && rm -f "$opt_logfn"
 step "start log" && echo "New log $(date -u)" >> "$opt_logfn"
 
+function prog_info() {
+	$fn="$1" filetype_long=$(file "$fn" | sed 's/^[^:]*: //') ; filetype=${filetype_long:0:30} ; filehash=$(sha256sum "$fn" | cut -d' ' -f1 ) ; echo "Result bin hash $filehash is [$filetype] in file $fn"
+}
+
 function build_normal() {
+	echo "----------------------------------------------------------" >> "$opt_logfn"
 	step "set clone" && dir_clone_alone=pay2exchange-core
 	step "clean clone dir" && rm -rf "$dir_clone_alone"
 	step "run git clone" && git clone git@github.com:pay2exchange/pay2exchange-core.git "$dir_clone_alone"
@@ -31,6 +36,7 @@ function build_normal() {
 	step "Get stats about repo etc"
 
 	git_here_rev=$(git rev-parse HEAD)
+	echo "Building from rev $git_here_rev" >> "$opt_logfn"
 
 	echo "git submodules: " >> "$opt_logfn"
 	git submodule status --recursive >> "$opt_logfn"
@@ -45,7 +51,11 @@ function build_normal() {
 	build_summary="rev=${git_here_rev} using CXX=$CXX CC=$CC in PWD=${PWD}"
 	echo "START: $build_summary" >> "$opt_logfn"
 	step "run the main compilation script" && /usr/bin/time -v bash ./dev.sh
-	echo "FINISH: $build_summary" >> "$opt_logfn"
+	build_result==$(
+		prog_info "programs/witness_node/witness_node"
+		prog_info "programs/cli_wallet/cli_wallet"
+	)
+	echo "*** FINISH: $build_summary $build_result" >> "$opt_logfn"
 }
 
 (
