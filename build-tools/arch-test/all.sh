@@ -15,13 +15,14 @@ function fatal() {
 }
 
 opt_rev="$1"
-opt_logfn="log.txt"
+opt_logfn="$PWD/log.txt"
 
-step "clear log" && rm "$opt_logfn"
+step "clear log" && rm -f "$opt_logfn"
 step "start log" && echo "New log $(date -u)" >> "$opt_logfn"
 
 function build_normal() {
 	step "set clone" && dir_clone_alone=pay2exchange-core
+	step "clean clone dir" && rm -rf "$dir_clone_alone"
 	step "run git clone" && git clone git@github.com:pay2exchange/pay2exchange-core.git "$dir_clone_alone"
 	step "cd into clone" && cd "$dir_clone_alone"
 	step "run git checkout" && git checkout "$opt_rev"
