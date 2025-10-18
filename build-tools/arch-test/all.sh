@@ -21,7 +21,11 @@ step "clear log" && rm -f "$opt_logfn"
 step "start log" && echo "New log $(date -u)" >> "$opt_logfn"
 
 function prog_info() {
-	$fn="$1" filetype_long=$(file "$fn" | sed 's/^[^:]*: //') ; filetype=${filetype_long:0:30} ; filehash=$(sha256sum "$fn" | cut -d' ' -f1 ) ; echo "Result bin hash $filehash is [$filetype] in file $fn"
+	fn="$1"
+	filetype_long=$(file "$fn" | sed 's/^[^:]*: //')
+	filetype=${filetype_long:0:30}
+	filehash=$(sha256sum "$fn" | cut -d' ' -f1 )
+	echo "Result bin hash $filehash is [$filetype] in file $fn"
 }
 
 function build_normal() {
@@ -50,12 +54,23 @@ function build_normal() {
 
 	build_summary="rev=${git_here_rev} using CXX=$CXX CC=$CC in PWD=${PWD}"
 	echo "START: $build_summary" >> "$opt_logfn"
+
+	start_time=$(date +%s)
+
 	step "run the main compilation script" && /usr/bin/time -v bash ./dev.sh
-	build_result==$(
-		prog_info "programs/witness_node/witness_node"
-		prog_info "programs/cli_wallet/cli_wallet"
-	)
-	echo "*** FINISH: $build_summary $build_result" >> "$opt_logfn"
+
+	end_time=$(date +%s)
+	elapsed=$((end_time - start_time))
+	hh=$((elapsed / 3600))
+	mm=$(((elapsed % 3600) / 60))
+	ss=$((elapsed % 60))
+	elapsed_str=$(printf "Elapsed time: %03d:%02d:%02d\n" $hh $mm $ss)
+
+	echo "*** FINISH: ($elapsed_str = $elapsed s) $build_summary" >> "$opt_logfn"
+	prog_info "programs/witness_node/witness_node" >> "$opt_logfn"
+	prog_info "programs/cli_wallet/cli_wallet" >> "$opt_logfn"
+	echo "----------------------------------------------------------" >> "$opt_logfn"
+	echo "" >> "$opt_logfn"
 }
 
 (
@@ -66,7 +81,7 @@ function build_normal() {
 
 (
 	save_pwd="$PWD"
-	source ~/use-clang18 && build_normal
+	source ~/use-clang-18 && build_normal
 	cd "$PWD"
 )
 
