@@ -308,7 +308,14 @@ function main_start_node(given_arg)
 	end
 
 	-- Construct program arguments
-	local prog = program_relative .. "../../programs/witness_node/witness_node"
+	core_base = os.getenv("P2E_CORE_HOME") -- e.g. /home/user/work/pay2exchange-core/
+	print(core_base)
+	if core_base == nil then
+		error("You must set env variable P2E_CORE_HOME")
+	end
+
+	-- local prog = program_relative .. "../../../../../programs/witness_node/witness_node"
+	local prog = core_base .. "programs/witness_node/witness_node"
 	local execargs = {
 			"--genesis-json=" .. genesis_fn_public_final
 			,"--enable-stale-production",
