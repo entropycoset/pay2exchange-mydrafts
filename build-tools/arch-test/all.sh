@@ -32,7 +32,7 @@ function build_normal() {
 	echo "----------------------------------------------------------" >> "$opt_logfn"
 	step "set clone" && dir_clone_alone=pay2exchange-core
 	step "clean clone dir" && rm -rf "$dir_clone_alone"
-	step "run git clone" && git clone git@github.com:pay2exchange/pay2exchange-core.git "$dir_clone_alone"
+	step "run git clone" && git clone https://github.com/pay2exchange/pay2exchange-core.git "$dir_clone_alone"
 	step "cd into clone" && cd "$dir_clone_alone"
 	step "run git checkout" && git checkout "$opt_rev"
 	step "run git submodule update" && git submodule update --init --recursive

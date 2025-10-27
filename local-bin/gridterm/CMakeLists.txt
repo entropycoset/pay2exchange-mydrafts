@@ -61,7 +61,7 @@ target_link_libraries(GridTerm
 
 # Define configurable runtime arguments (CMake cache variables)
 set(GRIDTERM_CWD "~/code/core/pay2exchange-core" CACHE STRING "Working directory for GridTerm")
-set(GRIDTERM_BLOCKCHAIN "ec2" CACHE STRING "Blockchain type")
+set(GRIDTERM_BLOCKCHAIN "ec3" CACHE STRING "Blockchain type")
 set(GRIDTERM_MYNODE "1" CACHE STRING "Main node number")
 set(GRIDTERM_NODES_WIT "2" CACHE STRING "Number of witness nodes")
 set(GRIDTERM_NODES_USER "1" CACHE STRING "Number of user nodes")
