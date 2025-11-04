@@ -365,8 +365,13 @@ function main_start_node(given_arg)
 	end
 
 	if cfg_role == "chainid" then
+		prog = core_base .. "programs/cli_wallet/cli_wallet"
+		execargs = {
+			"--read-genesis-json=" .. genesis_fn_public_final
+		}
+
 		table.insert(execargs, "--exit")
-		table.insert(execargs, "--minimal")
+		-- table.insert(execargs, "--minimal")
 		table.insert2(execargs, "--write-chainid", global_filename_for_chainid)
 	end
 
