@@ -309,10 +309,15 @@ function main_start_node(given_arg)
 
 	-- Construct program arguments
 	core_base = os.getenv("P2E_CORE_HOME") -- e.g. /home/user/work/pay2exchange-core/
-	print(core_base)
+	print("core_base=[" .. core_base .."]")
 	if core_base == nil then
 		error("You must set env variable P2E_CORE_HOME")
 	end
+	if core_base:sub(-1) ~= "/" then
+    		core_base = core_base .. "/"
+	end
+	if core_base == "" then error("P2E_CORE_HOME must be not-empty") end
+
 
 	-- local prog = program_relative .. "../../../../../programs/witness_node/witness_node"
 	local prog = core_base .. "programs/witness_node/witness_node"
