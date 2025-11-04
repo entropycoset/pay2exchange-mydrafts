@@ -288,7 +288,6 @@ function main_start_node(given_arg)
 				end
 		end
 	elseif begins_with(cfg_role, "wit") then
-		socket.sleep(1) -- XXX tmp
 		wit=cfg_role
 		print("You are a witness (" .. wit .. ")")
 		if not genesis_fn_private then
@@ -301,9 +300,7 @@ function main_start_node(given_arg)
 		mykey = extract_keys_jsonfile(genesis_fn_private, cfg_role)
 	elseif cfg_role == "chainid" then
 		print("You are just a run of the node to use following utility: get chainid")
-		socket.sleep(5) -- XXX tmp
 	elseif begins_with(cfg_role, "node") then
-		socket.sleep(1) -- XXX tmp
 		print("You are just a node (not a witness - not loading wit privkey)")
 	else
 		print("Unknown role (" .. cfg_role .. ")")
