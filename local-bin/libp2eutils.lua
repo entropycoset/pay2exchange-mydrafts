@@ -53,3 +53,17 @@ function show_args_bin(args)
 	end -- if binary showargs
 
 end -- our show_args()
+
+function load_p2e_env()
+	local ret
+	local core_base = os.getenv("P2E_CORE_HOME") -- e.g. /home/user/work/pay2exchange-core/
+	print("core_base=[" .. core_base .."]")
+	if core_base == nil then
+		error("You must set env variable P2E_CORE_HOME")
+	end
+	if core_base:sub(-1) ~= "/" then
+    		core_base = core_base .. "/"
+	end
+	if core_base == "" then error("P2E_CORE_HOME must be not-empty") end
+	return { core_base = core_base }
+end -- load_p2e_env

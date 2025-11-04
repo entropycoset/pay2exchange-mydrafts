@@ -43,7 +43,10 @@ function main_start_wallet(given_arg)
 	given_arg = given_arg or {}
 
 	local cfg_mode = given_arg[1] or "normal"
-	local cfg_walletprog = "../../../programs/cli_wallet/cli_wallet"
+
+	p2e_env = load_p2e_env()
+	local cfg_walletprog = p2e_env["core_base"] .. "programs/cli_wallet/cli_wallet"
+
 	local cfg_role="wallet"
 	local userindex=nil -- must be set by options
 
