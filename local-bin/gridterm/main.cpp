@@ -239,6 +239,7 @@ private:
 
     std::filesystem::path chainid_fn; ///< at startup, in this file we will put the chainID
     std::filesystem::path chainid_sandboxdir; ///< the sandbox dir used by the instance that at startup gets the chainid
+    int chainid_wait_cnt=0; ///< how many times we tried to read chainid file (waiting for it)
 
 public:
     StartupPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> world, QWidget *parent = nullptr)
@@ -749,8 +750,13 @@ void StartupPanel::next_step_chainid() {
     bool ready = std::filesystem::exists(chainid_fn);
     if (!ready) {
         appendLog("Still waiting for the file to be created.");
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        QTimer::singleShot(250, this, &StartupPanel::next_step_chainid);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        chainid_wait_cnt += 1;
+        int delay=250;
+        if (chainid_wait_cnt > 5) delay = 1000;
+        if (chainid_wait_cnt > 10) delay = 3000;
+        if (chainid_wait_cnt > 20) delay = 60*1000;
+        QTimer::singleShot(delay, this, &StartupPanel::next_step_chainid);
     }
     else {
         appendLog("Got the file with chainid");

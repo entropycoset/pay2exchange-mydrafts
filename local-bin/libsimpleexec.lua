@@ -62,6 +62,7 @@ end
 
 local function simple_exec(cmd,args,_ignored)
 	args = args or {}
+	print("EXEC: starting command: " .. cmd)
 
 	-- preserve colors
 	C.setenv("TERM", "xterm-256color", 1)
