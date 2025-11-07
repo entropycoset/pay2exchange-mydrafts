@@ -216,9 +216,9 @@ local function simple_exec(cmd,args,_ignored)
 		return exit_code_from_status(exit_status)
 	end,function(err) cleanup(err,true) end)
 
-	if not ok then cleanup(err,true) end
+	if not ok then cleanup(err,true); return nil end
 	cleanup(nil,false) -- no error, not in error - just normal cleanup after the exec success (end)
-	return ok
+	return err -- err contains the exit code from the xpcall function
 end
 
 return { simple_exec = simple_exec }
