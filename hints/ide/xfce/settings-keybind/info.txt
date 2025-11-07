@@ -1,2 +1,11 @@
 ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml
 
+editing with:
+
+xfwm4-settings
+
+
+btw inspect keys with:
+xfconf-query -c xfce4-keyboard-shortcuts -l -v
+
+
