@@ -21,6 +21,9 @@
 #include <QPixmap>
 #include <QMessageBox>
 #include <QTabWidget>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QHeaderView>
 #include <qtermwidget.h>
 #include "myterm.hpp"
 #include "loopbackfinder.h"
@@ -593,7 +596,53 @@ protected:
     }
 };
 
-// SimulationPanel - contains the tab widget with both startup and terminal panels
+// ExtraPanel - contains a table widget with sample data
+class ExtraPanel : public QWidget {
+    Q_OBJECT
+
+private:
+    QTableWidget *tableWidget;
+
+public:
+    ExtraPanel(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        QVBoxLayout *mainLayout = new QVBoxLayout(this);
+        mainLayout->setContentsMargins(5, 5, 5, 5);
+        mainLayout->setSpacing(5);
+
+        // Create table widget with 2 columns
+        tableWidget = new QTableWidget(this);
+        tableWidget->setColumnCount(2);
+        
+        // Set column headers
+        QStringList headers;
+        headers << "foo" << "bar";
+        tableWidget->setHorizontalHeaderLabels(headers);
+        
+        // Add 2 rows of sample data
+        tableWidget->setRowCount(2);
+        
+        // Row 1: "a", "b"
+        tableWidget->setItem(0, 0, new QTableWidgetItem("a"));
+        tableWidget->setItem(0, 1, new QTableWidgetItem("b"));
+        
+        // Row 2: "1", "2"
+        tableWidget->setItem(1, 0, new QTableWidgetItem("1"));
+        tableWidget->setItem(1, 1, new QTableWidgetItem("2"));
+        
+        // Configure table appearance
+        tableWidget->horizontalHeader()->setStretchLastSection(true);
+        tableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        tableWidget->setAlternatingRowColors(true);
+        tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+        tableWidget->setGridStyle(Qt::SolidLine);
+        
+        mainLayout->addWidget(tableWidget);
+    }
+};
+
+// SimulationPanel - contains the tab widget with startup, terminal panels, and extra panel
 class SimulationPanel : public QWidget {
     Q_OBJECT
 
@@ -601,6 +650,7 @@ private:
     QTabWidget *tabWidget;
     StartupPanel *startupPanel;
     TerminalPanel *terminalPanel;
+    ExtraPanel *extraPanel;
     std::shared_ptr<TerminalWindowSettings> m_settings;
 
 public:
@@ -624,9 +674,13 @@ public:
         tabWidget->addTab(startupPanel, "Startup");
 
         // Create and add terminal panel to tab #2
-
         terminalPanel = new TerminalPanel(m_settings, world);
         tabWidget->addTab(terminalPanel, "Terminal Grid");
+
+        // Create and add extra panel to tab #3
+        extraPanel = new ExtraPanel();
+        tabWidget->addTab(extraPanel, "extra");
+
         tabWidget->setCurrentIndex(1);
 
         // Connect startup completion signal to switch tabs
