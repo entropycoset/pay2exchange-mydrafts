@@ -15,27 +15,20 @@ public:
         std::cerr << "Program starting - StdPipe Server initializing with FDs: "
                   << cmd_in_fd << ", " << cmd_out_fd << std::endl;
 
-        if (cmd_in_fd == 0 && cmd_out_fd == 1) {
-            // Special case: using stdin/stdout directly
-            cmd_in_file = nullptr;
-            cmd_out_file = nullptr;
-            std::cerr << "Program starting - Using stdin/stdout directly" << std::endl;
-        } else {
-            // Open file streams for the anonymous pipes using /proc/self/fd/
-            std::string cmd_in_path = "/proc/self/fd/" + std::to_string(cmd_in_fd);
-            std::string cmd_out_path = "/proc/self/fd/" + std::to_string(cmd_out_fd);
+        // Open file streams for the anonymous pipes using /proc/self/fd/
+        std::string cmd_in_path = "/proc/self/fd/" + std::to_string(cmd_in_fd);
+        std::string cmd_out_path = "/proc/self/fd/" + std::to_string(cmd_out_fd);
 
-            cmd_in_file = std::make_unique<std::ifstream>(cmd_in_path);
-            if (!cmd_in_file->is_open() || cmd_in_file->fail()) {
-                std::cerr << "Error: Failed to open command input pipe (FD " << cmd_in_fd << ")" << std::endl;
-                throw std::runtime_error("Failed to open command input pipe");
-            }
+        cmd_in_file = std::make_unique<std::ifstream>(cmd_in_path);
+        if (!cmd_in_file->is_open() || cmd_in_file->fail()) {
+            std::cerr << "Error: Failed to open command input pipe (FD " << cmd_in_fd << ")" << std::endl;
+            throw std::runtime_error("Failed to open command input pipe");
+        }
 
-            cmd_out_file = std::make_unique<std::ofstream>(cmd_out_path);
-            if (!cmd_out_file->is_open() || cmd_out_file->fail()) {
-                std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")" << std::endl;
-                throw std::runtime_error("Failed to open command output pipe");
-            }
+        cmd_out_file = std::make_unique<std::ofstream>(cmd_out_path);
+        if (!cmd_out_file->is_open() || cmd_out_file->fail()) {
+            std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")" << std::endl;
+            throw std::runtime_error("Failed to open command output pipe");
         }
 
         std::cerr << "Program starting - StdPipe Server initialized successfully" << std::endl;
@@ -44,18 +37,12 @@ public:
     void send_reply(const std::string& reply) {
         std::cerr << "Program sending reply: " << reply << std::endl;
         
-        if (cmd_out_file) {
-            (*cmd_out_file) << reply << std::endl;
-            if (cmd_out_file->fail()) {
-                std::cerr << "Error: Failed to write reply to command output pipe" << std::endl;
-                throw std::runtime_error("Failed to write to command output pipe");
-            }
-            cmd_out_file->flush();
-        } else {
-            // Using stdout directly
-            std::cout << reply << std::endl;
-            std::cout.flush();
+        (*cmd_out_file) << reply << std::endl;
+        if (cmd_out_file->fail()) {
+            std::cerr << "Error: Failed to write reply to command output pipe" << std::endl;
+            throw std::runtime_error("Failed to write to command output pipe");
         }
+        cmd_out_file->flush();
     }
 
     void main_loop() {
@@ -64,16 +51,10 @@ public:
         while (true) {
             std::cerr << "Program waiting for command..." << std::endl;
             
-            bool read_success;
-            if (cmd_in_file) {
-                read_success = static_cast<bool>(std::getline(*cmd_in_file, command));
-            } else {
-                // Using stdin directly
-                read_success = static_cast<bool>(std::getline(std::cin, command));
-            }
+            bool read_success = static_cast<bool>(std::getline(*cmd_in_file, command));
             
             if (!read_success) {
-                if ((cmd_in_file && cmd_in_file->eof()) || (!cmd_in_file && std::cin.eof())) {
+                if (cmd_in_file->eof()) {
                     std::cerr << "Program detected end of input - exiting loop" << std::endl;
                     break;
                 } else {

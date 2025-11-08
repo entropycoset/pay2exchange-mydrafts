@@ -6,16 +6,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Find Boost
-find_package(Boost REQUIRED COMPONENTS system filesystem)
-
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
-
-# Link Boost to stdpipe_back
-target_link_libraries(stdpipe_back ${Boost_LIBRARIES})
-target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS})
+add_executable(safe_exec safe_exec.cpp)
 
 # Copy simple_test.sh to build directory
 configure_file(${CMAKE_SOURCE_DIR}/simple_test.sh ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh COPYONLY)
@@ -37,14 +31,14 @@ add_custom_target(copy_test_script
 
 # Add explicit "build_all" target that includes binaries and test script
 add_custom_target(build_all
-    DEPENDS stdpipe_back stdpipe_serv copy_test_script
+    DEPENDS stdpipe_back stdpipe_serv safe_exec copy_test_script
     COMMENT "Building all executables and copying test script"
 )
 
 # Add custom target "run" that executes the test script
 add_custom_target(run
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh
-    DEPENDS build_all
+    DEPENDS build_all safe_exec
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running test script"
 )
