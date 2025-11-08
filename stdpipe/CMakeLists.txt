@@ -6,9 +6,16 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Find Boost
+find_package(Boost REQUIRED COMPONENTS system filesystem)
+
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
+
+# Link Boost to stdpipe_back
+target_link_libraries(stdpipe_back ${Boost_LIBRARIES})
+target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS})
 
 # Copy simple_test.sh to build directory
 configure_file(${CMAKE_SOURCE_DIR}/simple_test.sh ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh COPYONLY)

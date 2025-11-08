@@ -1,113 +1,136 @@
 #include <iostream>
 #include <string>
+#include <stdexcept>
+#include <boost/process.hpp>
 #include <thread>
 #include <chrono>
-#include <fstream>
-#include <stdexcept>
-#include <memory>
 
-class StdPipeBack {
+namespace bp = boost::process;
+
+class StdPipeController {
 private:
-    std::unique_ptr<std::ofstream> cmd_out_file;  // command output pipe
-    std::unique_ptr<std::ifstream> resp_in_file;  // response input pipe
+    bp::opstream cmd_out;     // Write commands to server
+    bp::ipstream resp_in;     // Read responses from server
+    bp::child server_process; // The stdpipe_serv process
 
 public:
-    StdPipeBack(int cmd_out_fd, int resp_in_fd) {
-        std::cerr << "stdpipe_back: Starting with FDs: "
-                  << cmd_out_fd << ", " << resp_in_fd << std::endl;
-
-        // Open file streams for the anonymous pipes
-        std::string cmd_out_path = "/proc/self/fd/" + std::to_string(cmd_out_fd);
-        std::string resp_in_path = "/proc/self/fd/" + std::to_string(resp_in_fd);
-
-        cmd_out_file = std::make_unique<std::ofstream>(cmd_out_path);
-        if (!cmd_out_file->is_open() || cmd_out_file->fail()) {
-            std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")" << std::endl;
-            throw std::runtime_error("Failed to open command output pipe");
+    StdPipeController(const std::string& server_path) {
+        std::cerr << "StdPipeController: Starting server process: " << server_path << std::endl;
+        
+        try {
+            // Launch the server process with stdin/stdout redirected
+            // We'll use stdin=FD3, stdout=FD4 approach
+            server_process = bp::child(
+                server_path + " 0 1",  // Server will use stdin as FD3, stdout as FD4
+                bp::std_in < cmd_out,
+                bp::std_out > resp_in,
+                bp::std_err > stderr
+            );
+            
+            if (!server_process.running()) {
+                throw std::runtime_error("Failed to start server process");
+            }
+            
+            std::cerr << "StdPipeController: Server process started successfully" << std::endl;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Error starting server process: " << e.what() << std::endl;
+            throw;
         }
+    }
 
-        resp_in_file = std::make_unique<std::ifstream>(resp_in_path);
-        if (!resp_in_file->is_open() || resp_in_file->fail()) {
-            std::cerr << "Error: Failed to open response input pipe (FD " << resp_in_fd << ")" << std::endl;
-            throw std::runtime_error("Failed to open response input pipe");
+    ~StdPipeController() {
+        if (server_process.running()) {
+            std::cerr << "StdPipeController: Terminating server process" << std::endl;
+            server_process.terminate();
+            server_process.wait();
         }
-
-        std::cerr << "stdpipe_back: Initialized successfully" << std::endl;
     }
 
     void send_command(const std::string& command) {
-        std::cerr << "stdpipe_back: Sending command: " << command << std::endl;
-        (*cmd_out_file) << command << std::endl;
-        if (cmd_out_file->fail()) {
-            std::cerr << "Error: Failed to write command to output pipe" << std::endl;
-            throw std::runtime_error("Failed to write command to output pipe");
+        std::cerr << "StdPipeController: Sending command: " << command << std::endl;
+        cmd_out << command << std::endl;
+        cmd_out.flush();
+        
+        if (cmd_out.fail()) {
+            throw std::runtime_error("Failed to send command to server");
         }
-        cmd_out_file->flush();
     }
 
     std::string read_response() {
         std::string response;
-        if (!std::getline(*resp_in_file, response)) {
-            if (resp_in_file->eof()) {
-                std::cerr << "stdpipe_back: Response pipe closed" << std::endl;
-                return "";
+        if (!std::getline(resp_in, response)) {
+            if (resp_in.eof()) {
+                throw std::runtime_error("Server closed response pipe");
             } else {
-                std::cerr << "Error: Failed to read response from input pipe" << std::endl;
-                throw std::runtime_error("Failed to read response from input pipe");
+                throw std::runtime_error("Failed to read response from server");
             }
         }
-        std::cerr << "stdpipe_back: Received response: " << response << std::endl;
+        
+        std::cerr << "StdPipeController: Received response: " << response << std::endl;
         return response;
     }
 
     void run_test() {
-        std::cerr << "stdpipe_back: Starting command generator test" << std::endl;
+        std::cerr << "StdPipeController: Starting communication test" << std::endl;
         
-        // Test sequence with responses
-        send_command("ping");
-        read_response();
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        send_command("ping");
-        read_response();
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        send_command("hello");
-        read_response();
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        send_command("quit");
-        read_response();
-        
-        std::cerr << "stdpipe_back: Test completed, exiting" << std::endl;
+        try {
+            // Test 1: Send ping, expect pong
+            send_command("ping");
+            std::string response1 = read_response();
+            if (response1 != "pong") {
+                throw std::runtime_error("Expected 'pong' but got: '" + response1 + "'");
+            }
+            std::cerr << "✓ Ping test passed" << std::endl;
+            
+            // Small delay
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            
+            // Test 2: Send quit
+            send_command("quit");
+            std::string response2 = read_response();
+            if (response2 != "goodbye") {
+                throw std::runtime_error("Expected 'goodbye' but got: '" + response2 + "'");
+            }
+            std::cerr << "✓ Quit test passed" << std::endl;
+            
+            // Close our end of the pipes
+            cmd_out.pipe().close();
+            resp_in.pipe().close();
+            
+            // Wait for server to exit
+            server_process.wait();
+            
+            if (server_process.exit_code() != 0) {
+                throw std::runtime_error("Server process exited with code: " + 
+                                       std::to_string(server_process.exit_code()));
+            }
+            
+            std::cerr << "✓ All tests passed successfully" << std::endl;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "✗ Test failed: " << e.what() << std::endl;
+            throw;
+        }
     }
 };
 
 int main(int argc, char* argv[]) {
     try {
-        // Expect command line arguments for the two pipe file descriptors
-        if (argc != 3) {
-            std::cerr << "Usage: " << argv[0] << " <cmd_out_fd> <resp_in_fd>" << std::endl;
-            std::cerr << "Error: Expected exactly 2 file descriptors for pipes" << std::endl;
-            throw std::runtime_error("Invalid command line arguments");
-        }
-
-        int cmd_out_fd = std::stoi(argv[1]);
-        int resp_in_fd = std::stoi(argv[2]);
-
-        if (cmd_out_fd < 0 || resp_in_fd < 0) {
-            std::cerr << "Error: Invalid file descriptor numbers" << std::endl;
-            throw std::runtime_error("Invalid file descriptor numbers");
-        }
-
-        StdPipeBack back(cmd_out_fd, resp_in_fd);
-        back.run_test();
+        std::cerr << "StdPipe Backend Controller starting..." << std::endl;
         
-        std::cerr << "stdpipe_back: Exiting normally" << std::endl;
+        // Determine server path - assume it's in the same directory
+        std::string server_path = "./stdpipe_serv";
+        if (argc > 1) {
+            server_path = argv[1];
+        }
+        
+        StdPipeController controller(server_path);
+        controller.run_test();
+        
+        std::cerr << "StdPipe Backend Controller completed successfully" << std::endl;
         return 0;
+        
     } catch (const std::exception& e) {
         std::cerr << "Exception caught: " << e.what() << std::endl;
         return 1;
