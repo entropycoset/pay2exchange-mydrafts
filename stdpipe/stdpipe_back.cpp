@@ -63,27 +63,26 @@ public:
         if (pipe(pipe_fds) == -1) {
             throw std::runtime_error("Failed to create pipe");
         }
-        // we own bot hends        
+        // we own both ends
         m_read.set_fd(pipe_fds[0], true);   // Read end
         m_write.set_fd(pipe_fds[1], true);  // Write end
     }
     
-    // Expose close functions
-    void read_close() {
-        m_read.close();
+    // New API: Return references to the my_fd objects
+    my_fd& side_read() {
+        return m_read;
     }
     
-    void write_close() {
-        m_write.close();
+    const my_fd& side_read() const {
+        return m_read;
     }
     
-    // Expose FD getter functions
-    int read_fd() const {
-        return m_read.get_fd();
+    my_fd& side_write() {
+        return m_write;
     }
     
-    int write_fd() const {
-        return m_write.get_fd();
+    const my_fd& side_write() const {
+        return m_write;
     }
 };
 
@@ -105,11 +104,11 @@ public:
             cmd_pipe.spawn();
             resp_pipe.spawn();
             
-            std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.read_fd() << "," << cmd_pipe.write_fd()
-                      << "], resp_pipe[" << resp_pipe.read_fd() << "," << resp_pipe.write_fd() << "]" << std::endl;
+            std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.side_read().get_fd() << "," << cmd_pipe.side_write().get_fd()
+                      << "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]" << std::endl;
                       
-            std::cerr << "StdPipeController: Will duplicate cmd_pipe.read_fd()=" << cmd_pipe.read_fd() << " to FD 3 (child reads)" << std::endl;
-            std::cerr << "StdPipeController: Will duplicate resp_pipe.write_fd()=" << resp_pipe.write_fd() << " to FD 4 (child writes)" << std::endl;
+            std::cerr << "StdPipeController: Will duplicate cmd_pipe.side_read().get_fd()=" << cmd_pipe.side_read().get_fd() << " to FD 3 (child reads)" << std::endl;
+            std::cerr << "StdPipeController: Will duplicate resp_pipe.side_write().get_fd()=" << resp_pipe.side_write().get_fd() << " to FD 4 (child writes)" << std::endl;
             
             // Manual fork for FD setup, then use boost::process to manage child
             pid_t raw_pid = fork();
@@ -119,8 +118,8 @@ public:
             
             if (raw_pid == 0) {
                 // Child process - set up FDs manually
-                int cmd_read_fd = cmd_pipe.read_fd();
-                int resp_write_fd = resp_pipe.write_fd();
+                int cmd_read_fd = cmd_pipe.side_read().get_fd();
+                int resp_write_fd = resp_pipe.side_write().get_fd();
                 
                 std::cerr << "Child: About to dup2 cmd_pipe.read_fd()=" << cmd_read_fd << " to FD 3" << std::endl;
                 if (cmd_read_fd != 3) {
@@ -139,8 +138,8 @@ public:
                 
                 // Close original pipe ends in child, but only if they're not FD 3 or 4
                 if (cmd_read_fd != 3) close(cmd_read_fd);
-                if (cmd_pipe.write_fd() != 3 && cmd_pipe.write_fd() != 4) close(cmd_pipe.write_fd());
-                if (resp_pipe.read_fd() != 3 && resp_pipe.read_fd() != 4) close(resp_pipe.read_fd());
+                if (cmd_pipe.side_write().get_fd() != 3 && cmd_pipe.side_write().get_fd() != 4) close(cmd_pipe.side_write().get_fd());
+                if (resp_pipe.side_read().get_fd() != 3 && resp_pipe.side_read().get_fd() != 4) close(resp_pipe.side_read().get_fd());
                 if (resp_write_fd != 4) close(resp_write_fd);
                 
                 std::cerr << "Child: About to exec server with FD 3,4" << std::endl;
@@ -154,8 +153,8 @@ public:
             server_process = bp::child(raw_pid);
             
             // Close the child's ends in parent
-            cmd_pipe.read_close();   // Child uses this for reading (now FD 3)
-            resp_pipe.write_close(); // Child uses this for writing (now FD 4)
+            cmd_pipe.side_read().close();   // Child uses this for reading (now FD 3)
+            resp_pipe.side_write().close(); // Child uses this for writing (now FD 4)
             
             std::cerr << "StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)" << std::endl;
             
@@ -186,7 +185,7 @@ public:
     void send_command(const std::string& command) {
         std::cerr << "StdPipeController: Sending command: " << command << std::endl;
         std::string cmd_with_newline = command + "\n";
-        ssize_t bytes_written = write(cmd_pipe.write_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
+        ssize_t bytes_written = write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
         
         if (bytes_written == -1 || bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
             throw std::runtime_error("Failed to send command to server");
@@ -196,7 +195,7 @@ public:
     std::string read_response() {
         std::string response;
         char buffer[1024];
-        ssize_t bytes_read = read(resp_pipe.read_fd(), buffer, sizeof(buffer) - 1);
+        ssize_t bytes_read = read(resp_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1);
         
         if (bytes_read == -1) {
             throw std::runtime_error("Failed to read response from server");
@@ -240,8 +239,8 @@ public:
             std::cerr << "✓ Quit test passed" << std::endl;
             
             // Close our end of the pipes
-            cmd_pipe.write_close();
-            resp_pipe.read_close();
+            cmd_pipe.side_write().close();
+            resp_pipe.side_read().close();
             
             // Wait for server to exit
             server_process.wait();
