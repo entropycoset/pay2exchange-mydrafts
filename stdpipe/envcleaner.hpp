@@ -61,6 +61,67 @@ struct dirent* safe_readdir(DIR* dir);
 DIR* safe_opendir(const char* path);
 
 /**
+ * @brief Safe wrapper for setenv that uses validated_libc_call
+ *
+ * @param name Environment variable name
+ * @param value Environment variable value
+ * @param overwrite Whether to overwrite existing variable
+ * @throws std::runtime_error if setenv fails
+ */
+void safe_setenv(const char* name, const char* value, int overwrite);
+
+/**
+ * @brief Safe wrapper for unsetenv that uses validated_libc_call
+ *
+ * @param name Environment variable name to unset
+ * @throws std::runtime_error if unsetenv fails
+ */
+void safe_unsetenv(const char* name);
+
+/**
+ * @brief Parse comma-separated list of integers safely
+ *
+ * @param input Comma-separated string like "1,2,3,4"
+ * @return std::vector<int> Parsed integers
+ * @throws std::runtime_error on parsing errors
+ */
+std::vector<int> parse_fd_list(const std::string& input);
+
+/**
+ * @brief Parse comma-separated list of strings safely
+ *
+ * @param input Comma-separated string like "PATH,USER,HOME"
+ * @return std::vector<std::string> Parsed strings
+ * @throws std::runtime_error on parsing errors
+ */
+std::vector<std::string> parse_string_list(const std::string& input);
+
+/**
+ * @brief Parse comma-separated list of key=value pairs safely
+ *
+ * @param input Comma-separated string like "HOME=/tmp,VAR=value"
+ * @return std::vector<std::pair<std::string, std::string>> Parsed key-value pairs
+ * @throws std::runtime_error on parsing errors
+ */
+std::vector<std::pair<std::string, std::string>> parse_env_pairs(const std::string& input);
+
+/**
+ * @brief Clean environment variables keeping only specified ones
+ *
+ * @param keep_vars Vector of environment variable names to keep
+ * @throws std::runtime_error on errors
+ */
+void clean_environment(const std::vector<std::string>& keep_vars);
+
+/**
+ * @brief Set environment variables from key-value pairs
+ *
+ * @param env_vars Vector of key-value pairs to set
+ * @throws std::runtime_error on errors
+ */
+void set_environment(const std::vector<std::pair<std::string, std::string>>& env_vars);
+
+/**
  * @brief Count open file descriptors by scanning /proc/self/fd
  * 
  * This function scans /proc/self/fd directory and counts all open file descriptors,

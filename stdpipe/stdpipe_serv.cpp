@@ -4,16 +4,14 @@
 #include <fstream>
 #include <unistd.h>
 #include <memory>
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/iostreams/stream.hpp>
-
-
-
+#include <vector>
 #include <sstream>
 #include <type_traits>
 #include <limits>
 #include <cstdlib>
 #include <cerrno>
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 
 namespace utils {
 
@@ -163,15 +161,24 @@ public:
 
 int main(int argc, char* argv[]) {
     try {
+        // First convert argv to safe vector
+        std::vector<std::string> argvect;
+        for (int i = 0; i < argc; ++i) {
+            if (argv[i] == nullptr) {
+                throw std::runtime_error("Null argv element at index " + std::to_string(i));
+            }
+            argvect.push_back(std::string(argv[i]));
+        }
+        
         // Expect command line arguments for the two pipe file descriptors
-        if (argc != 3) {
-            std::cerr << "Usage: " << argv[0] << " <cmd_in_fd> <cmd_out_fd>\n";
+        if (argvect.size() != 3) {
+            std::cerr << "Usage: " << argvect.at(0) << " <cmd_in_fd> <cmd_out_fd>\n";
             std::cerr << "Error: Expected exactly 2 file descriptors for anonymous pipes\n";
             throw std::runtime_error("Invalid command line arguments");
         }
 
-        int cmd_in_fd = utils::parse_strict_integer<int>(argv[1]);
-        int cmd_out_fd = utils::parse_strict_integer<int>(argv[2]);
+        int cmd_in_fd = utils::parse_strict_integer<int>(argvect.at(1));
+        int cmd_out_fd = utils::parse_strict_integer<int>(argvect.at(2));
         std::cerr << "Will talk CMD on: cmd-in fd " << cmd_in_fd << ", cmd-out fd " << cmd_out_fd << "\n";
 
         if (cmd_in_fd < 0 || cmd_out_fd < 0) {

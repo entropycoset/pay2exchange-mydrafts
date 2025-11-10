@@ -170,6 +170,15 @@ public:
             throw std::runtime_error("Server closed response pipe");
         }
         
+        // Ensure bounds safety: Check negative first to avoid wraparound, then check upper bound
+        if (bytes_read < 0) {
+            throw std::runtime_error("Negative bytes_read from read(): " + std::to_string(bytes_read));
+        }
+        if (bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
+            throw std::runtime_error("bytes_read exceeds buffer size: " + std::to_string(bytes_read) +
+                                    " >= " + std::to_string(sizeof(buffer)));
+        }
+        
         buffer[bytes_read] = '\0';
         response = buffer;
         
@@ -228,12 +237,21 @@ public:
 
 int main(int argc, char* argv[]) {
     try {
+        // First convert argv to safe vector
+        std::vector<std::string> argvect;
+        for (int i = 0; i < argc; ++i) {
+            if (argv[i] == nullptr) {
+                throw std::runtime_error("Null argv element at index " + std::to_string(i));
+            }
+            argvect.push_back(std::string(argv[i]));
+        }
+        
         std::cerr << "StdPipe Backend Controller starting...\n";
         
         // Determine server path - assume it's in the same directory
         std::string server_path = "./stdpipe_serv";
-        if (argc > 1) {
-            server_path = argv[1];
+        if (argvect.size() > 1) {
+            server_path = argvect.at(1);
         }
         
         StdPipeController controller(server_path);
