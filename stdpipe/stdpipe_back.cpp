@@ -11,10 +11,86 @@
 
 namespace bp = boost::process;
 
+class my_fd {
+private:
+    int m_fd;    // my file descriptor, e.g. from open or one out of pipe()
+    bool m_owned; // tells if this object owns this FD and should close it
+
+public:
+    // Empty constructor sets -1, false
+    my_fd() : m_fd(-1), m_owned(false) {}
+    
+    // Constructor assigns args to members
+    my_fd(int _id, bool _owned) : m_fd(_id), m_owned(_owned) {}
+    
+    // Destructor: if owned then close and mark as not owned
+    ~my_fd() {
+        close();
+    }
+    
+    // Close function that closes if owned
+    void close() {
+        if (m_owned && m_fd >= 0) {
+            ::close(m_fd);
+            m_owned = false;
+            m_fd = -1;
+        }
+    }
+    
+    // Get the file descriptor
+    int fd() const { return m_fd; }
+    
+    // Set the file descriptor and ownership
+    void set(int _fd, bool _owned) {
+        close(); // Close existing if owned
+        m_fd = _fd;
+        m_owned = _owned;
+    }
+};
+
+class my_pipe {
+private:
+    my_fd m_read;
+    my_fd m_write;
+
+public:
+    // Constructor does nothing
+    my_pipe() {}
+    
+    // Function spawn() calls pipe() and puts resulting 2 integers into our my_fd members
+    void spawn() {
+        int pipe_fds[2];
+        if (pipe(pipe_fds) == -1) {
+            throw std::runtime_error("Failed to create pipe");
+        }
+        
+        m_read.set(pipe_fds[0], true);   // Read end, owned
+        m_write.set(pipe_fds[1], true);  // Write end, owned
+    }
+    
+    // Expose close functions
+    void read_close() {
+        m_read.close();
+    }
+    
+    void write_close() {
+        m_write.close();
+    }
+    
+    // Expose FD getter functions
+    int read_fd() const {
+        return m_read.fd();
+    }
+    
+    int write_fd() const {
+        return m_write.fd();
+    }
+};
+
 class StdPipeController {
 private:
-    int cmd_write_fd;         // Write commands to server (parent's end)
-    int resp_read_fd;         // Read responses from server (parent's end)
+    my_pipe cmd_pipe;         // Command pipe (parent writes, child reads)
+    my_pipe resp_pipe;        // Response pipe (child writes, parent reads)
     bp::child server_process; // The stdpipe_serv process
 
 public:
@@ -25,56 +101,47 @@ public:
             // Close FDs 3 and 4 if they're open to ensure they're available
             close(3); close(4);
             
-            // Create manual pipes for FD 3 and 4
-            int cmd_pipe[2], resp_pipe[2];
-            if (pipe(cmd_pipe) == -1) {
-                throw std::runtime_error("Failed to create command pipe");
-            }
-            if (pipe(resp_pipe) == -1) {
-                close(cmd_pipe[0]); close(cmd_pipe[1]);
-                throw std::runtime_error("Failed to create response pipe");
-            }
+            // Create pipes using my_pipe class
+            cmd_pipe.spawn();
+            resp_pipe.spawn();
             
-            std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe[0] << "," << cmd_pipe[1]
-                      << "], resp_pipe[" << resp_pipe[0] << "," << resp_pipe[1] << "]" << std::endl;
+            std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.read_fd() << "," << cmd_pipe.write_fd()
+                      << "], resp_pipe[" << resp_pipe.read_fd() << "," << resp_pipe.write_fd() << "]" << std::endl;
                       
-            std::cerr << "StdPipeController: Will duplicate cmd_pipe[0]=" << cmd_pipe[0] << " to FD 3 (child reads)" << std::endl;
-            std::cerr << "StdPipeController: Will duplicate resp_pipe[1]=" << resp_pipe[1] << " to FD 4 (child writes)" << std::endl;
-            
-            // Store parent's ends
-            cmd_write_fd = cmd_pipe[1];   // Parent writes commands here
-            resp_read_fd = resp_pipe[0];  // Parent reads responses here
+            std::cerr << "StdPipeController: Will duplicate cmd_pipe.read_fd()=" << cmd_pipe.read_fd() << " to FD 3 (child reads)" << std::endl;
+            std::cerr << "StdPipeController: Will duplicate resp_pipe.write_fd()=" << resp_pipe.write_fd() << " to FD 4 (child writes)" << std::endl;
             
             // Manual fork for FD setup, then use boost::process to manage child
             pid_t raw_pid = fork();
             if (raw_pid == -1) {
-                close(cmd_pipe[0]); close(cmd_pipe[1]);
-                close(resp_pipe[0]); close(resp_pipe[1]);
                 throw std::runtime_error("Failed to fork server process");
             }
             
             if (raw_pid == 0) {
                 // Child process - set up FDs manually
-                std::cerr << "Child: About to dup2 cmd_pipe[0]=" << cmd_pipe[0] << " to FD 3" << std::endl;
-                if (cmd_pipe[0] != 3) {
-                    if (dup2(cmd_pipe[0], 3) == -1) {
+                int cmd_read_fd = cmd_pipe.read_fd();
+                int resp_write_fd = resp_pipe.write_fd();
+                
+                std::cerr << "Child: About to dup2 cmd_pipe.read_fd()=" << cmd_read_fd << " to FD 3" << std::endl;
+                if (cmd_read_fd != 3) {
+                    if (dup2(cmd_read_fd, 3) == -1) {
                         std::cerr << "Child: Failed to dup2 cmd_pipe read to FD 3, errno=" << errno << std::endl;
                         _exit(1);
                     }
                 }
-                std::cerr << "Child: About to dup2 resp_pipe[1]=" << resp_pipe[1] << " to FD 4" << std::endl;
-                if (resp_pipe[1] != 4) {
-                    if (dup2(resp_pipe[1], 4) == -1) {
+                std::cerr << "Child: About to dup2 resp_pipe.write_fd()=" << resp_write_fd << " to FD 4" << std::endl;
+                if (resp_write_fd != 4) {
+                    if (dup2(resp_write_fd, 4) == -1) {
                         std::cerr << "Child: Failed to dup2 resp_pipe write to FD 4, errno=" << errno << std::endl;
                         _exit(1);
                     }
                 }
                 
                 // Close original pipe ends in child, but only if they're not FD 3 or 4
-                if (cmd_pipe[0] != 3) close(cmd_pipe[0]);
-                if (cmd_pipe[1] != 3 && cmd_pipe[1] != 4) close(cmd_pipe[1]);
-                if (resp_pipe[0] != 3 && resp_pipe[0] != 4) close(resp_pipe[0]);
-                if (resp_pipe[1] != 4) close(resp_pipe[1]);
+                if (cmd_read_fd != 3) close(cmd_read_fd);
+                if (cmd_pipe.write_fd() != 3 && cmd_pipe.write_fd() != 4) close(cmd_pipe.write_fd());
+                if (resp_pipe.read_fd() != 3 && resp_pipe.read_fd() != 4) close(resp_pipe.read_fd());
+                if (resp_write_fd != 4) close(resp_write_fd);
                 
                 std::cerr << "Child: About to exec server with FD 3,4" << std::endl;
                 // Execute the server
@@ -87,8 +154,8 @@ public:
             server_process = bp::child(raw_pid);
             
             // Close the child's ends in parent
-            close(cmd_pipe[0]);  // Child uses this for reading (now FD 3)
-            close(resp_pipe[1]); // Child uses this for writing (now FD 4)
+            cmd_pipe.read_close();   // Child uses this for reading (now FD 3)
+            resp_pipe.write_close(); // Child uses this for writing (now FD 4)
             
             std::cerr << "StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)" << std::endl;
             
@@ -113,14 +180,13 @@ public:
             server_process.terminate();
             server_process.wait();
         }
-        if (cmd_write_fd >= 0) close(cmd_write_fd);
-        if (resp_read_fd >= 0) close(resp_read_fd);
+        // The my_pipe destructors will automatically close owned FDs
     }
 
     void send_command(const std::string& command) {
         std::cerr << "StdPipeController: Sending command: " << command << std::endl;
         std::string cmd_with_newline = command + "\n";
-        ssize_t bytes_written = write(cmd_write_fd, cmd_with_newline.c_str(), cmd_with_newline.length());
+        ssize_t bytes_written = write(cmd_pipe.write_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
         
         if (bytes_written == -1 || bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
             throw std::runtime_error("Failed to send command to server");
@@ -130,7 +196,7 @@ public:
     std::string read_response() {
         std::string response;
         char buffer[1024];
-        ssize_t bytes_read = read(resp_read_fd, buffer, sizeof(buffer) - 1);
+        ssize_t bytes_read = read(resp_pipe.read_fd(), buffer, sizeof(buffer) - 1);
         
         if (bytes_read == -1) {
             throw std::runtime_error("Failed to read response from server");
@@ -174,10 +240,8 @@ public:
             std::cerr << "✓ Quit test passed" << std::endl;
             
             // Close our end of the pipes
-            close(cmd_write_fd);
-            close(resp_read_fd);
-            cmd_write_fd = -1;
-            resp_read_fd = -1;
+            cmd_pipe.write_close();
+            resp_pipe.read_close();
             
             // Wait for server to exit
             server_process.wait();
