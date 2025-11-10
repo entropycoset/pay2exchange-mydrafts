@@ -1,0 +1,103 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "rust: cargo build",
+            "type": "shell",
+            "command": "cargo",
+            "args": ["build"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": ["$rustc"]
+        },
+        {
+            "label": "rust: cargo run - pipe test",
+            "type": "shell",
+            "command": "cargo",
+            "args": ["run", "--bin", "stdpipe_back", "--", "./target/debug/stdpipe_serv"],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOn": "rust: cargo build",
+            "problemMatcher": ["$rustc"]
+        },
+        {
+            "label": "rust: cargo test",
+            "type": "shell",
+            "command": "cargo",
+            "args": ["test"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": ["$rustc"]
+        },
+        {
+            "label": "make test",
+            "type": "shell",
+            "command": "make",
+            "args": ["test"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "make build",
+            "type": "shell",
+            "command": "make",
+            "args": ["build"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build and run",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "rust: cargo build",
+                "rust: cargo run - pipe test"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}

@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Pipe Communication Test",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/stdpipe_back",
+            "args": ["${workspaceFolder}/target/debug/stdpipe_serv"],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"],
+            "preLaunchTask": "rust: cargo build"
+        },
+        {
+            "name": "Run stdpipe_back",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/stdpipe_back",
+            "args": ["${workspaceFolder}/target/debug/stdpipe_serv"],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"],
+            "preLaunchTask": "rust: cargo build"
+        },
+        {
+            "name": "Run stdpipe_serv (standalone)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/stdpipe_serv",
+            "args": ["3", "4"],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"],
+            "preLaunchTask": "rust: cargo build"
+        },
+        {
+            "name": "Run with Cargo",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": ["run", "--bin=stdpipe_back", "--", "${workspaceFolder}/target/debug/stdpipe_serv"],
+                "filter": {
+                    "name": "stdpipe_back",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
