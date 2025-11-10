@@ -1,0 +1,16 @@
+[package]
+name = "stdpipe_rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nix = { version = "0.27", features = ["process", "fs", "signal"] }
+anyhow = "1.0"
+
+[[bin]]
+name = "stdpipe_serv"
+path = "src/stdpipe_serv.rs"
+
+[[bin]]
+name = "stdpipe_back"
+path = "src/stdpipe_back.rs"
