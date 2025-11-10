@@ -10,6 +10,9 @@
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
+#include <limits>
+#include <type_traits>
+#include <fcntl.h>
 
 extern char **environ;
 
@@ -51,6 +54,47 @@ void safe_unsetenv(const char* name) {
     );
 }
 
+// Helper function to validate that input contains no leading/trailing whitespace
+void validate_no_whitespace_padding(const std::string& item, const std::string& context) {
+    if (!item.empty()) {
+        if (std::isspace(static_cast<unsigned char>(item.front()))) {
+            std::cerr << "Error: " << context << " contains leading whitespace: '" << item << "'\n";
+            throw std::runtime_error(context + " contains leading whitespace, use normalized input without spaces/tabs");
+        }
+        if (std::isspace(static_cast<unsigned char>(item.back()))) {
+            std::cerr << "Error: " << context << " contains trailing whitespace: '" << item << "'\n";
+            throw std::runtime_error(context + " contains trailing whitespace, use normalized input without spaces/tabs");
+        }
+    }
+}
+
+// Helper function to validate POSIX environment variable names
+void validate_env_var_name(const std::string& name) {
+    if (name.empty()) {
+        std::cerr << "Error: Environment variable name cannot be empty\n";
+        throw std::runtime_error("Empty environment variable name");
+    }
+    
+    // POSIX: First character must be letter or underscore
+    char first = name[0];
+    if (!std::isalpha(static_cast<unsigned char>(first)) && first != '_') {
+        std::cerr << "Error: Environment variable name '" << name
+                  << "' must start with letter (a-z,A-Z) or underscore (_), got: '" << first << "'\n";
+        throw std::runtime_error("Invalid environment variable name: " + name);
+    }
+    
+    // POSIX: Remaining characters must be letters, digits, or underscores
+    for (size_t i = 1; i < name.length(); ++i) {
+        char c = name[i];
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+            std::cerr << "Error: Environment variable name '" << name
+                      << "' contains invalid character at position " << i << ": '" << c
+                      << "' (only letters, digits, underscore allowed)\n";
+            throw std::runtime_error("Invalid character in environment variable name: " + name);
+        }
+    }
+}
+
 std::vector<int> parse_fd_list(const std::string& input) {
     std::vector<int> result;
     if (input.empty()) {
@@ -61,11 +105,11 @@ std::vector<int> parse_fd_list(const std::string& input) {
     std::string item;
     
     while (std::getline(iss, item, ',')) {
-        // Trim whitespace
-        item.erase(0, item.find_first_not_of(" \t"));
-        item.erase(item.find_last_not_of(" \t") + 1);
+        // Strict validation: NO silent trimming, throw on non-normalized input
+        validate_no_whitespace_padding(item, "FD number");
         
         if (item.empty()) {
+            std::cerr << "Error: Empty FD number in comma-separated list\n";
             throw std::runtime_error("Empty FD number in list");
         }
         
@@ -75,15 +119,19 @@ std::vector<int> parse_fd_list(const std::string& input) {
         long fd_num = std::strtol(item.c_str(), &endptr, 10);
         
         if (*endptr != '\0') {
+            std::cerr << "Error: Invalid FD number contains non-digit characters: '" << item << "'\n";
             throw std::runtime_error("Invalid FD number: " + item);
         }
         if (errno == ERANGE) {
+            std::cerr << "Error: FD number caused numerical overflow: '" << item << "'\n";
             throw std::runtime_error("FD number caused overflow: " + item);
         }
         if (fd_num < 0) {
+            std::cerr << "Error: Negative FD number not allowed: " << fd_num << "\n";
             throw std::runtime_error("Negative FD number: " + item);
         }
         if (fd_num > INT_MAX) {
+            std::cerr << "Error: FD number exceeds maximum allowed value (INT_MAX=" << INT_MAX << "): " << fd_num << "\n";
             throw std::runtime_error("FD number exceeds INT_MAX: " + item);
         }
         
@@ -103,18 +151,16 @@ std::vector<std::string> parse_string_list(const std::string& input) {
     std::string item;
     
     while (std::getline(iss, item, ',')) {
-        // Trim whitespace
-        item.erase(0, item.find_first_not_of(" \t"));
-        item.erase(item.find_last_not_of(" \t") + 1);
+        // Strict validation: NO silent trimming, throw on non-normalized input
+        validate_no_whitespace_padding(item, "Environment variable name");
         
         if (item.empty()) {
+            std::cerr << "Error: Empty environment variable name in comma-separated list\n";
             throw std::runtime_error("Empty string in list");
         }
         
-        // Validate environment variable name (basic validation)
-        if (item.find('=') != std::string::npos) {
-            throw std::runtime_error("Environment variable name cannot contain '=': " + item);
-        }
+        // Comprehensive POSIX environment variable name validation
+        validate_env_var_name(item);
         
         result.push_back(item);
     }
@@ -132,34 +178,38 @@ std::vector<std::pair<std::string, std::string>> parse_env_pairs(const std::stri
     std::string item;
     
     while (std::getline(iss, item, ',')) {
-        // Trim whitespace
-        item.erase(0, item.find_first_not_of(" \t"));
-        item.erase(item.find_last_not_of(" \t") + 1);
+        // Strict validation: NO silent trimming, throw on non-normalized input
+        validate_no_whitespace_padding(item, "Key=value pair");
         
         if (item.empty()) {
+            std::cerr << "Error: Empty key=value pair in comma-separated list\n";
             throw std::runtime_error("Empty key=value pair in list");
         }
         
         size_t eq_pos = item.find('=');
         if (eq_pos == std::string::npos) {
+            std::cerr << "Error: Missing '=' separator in key=value pair: '" << item << "'\n";
             throw std::runtime_error("Missing '=' in key=value pair: " + item);
         }
         if (eq_pos == 0) {
+            std::cerr << "Error: Empty key in key=value pair: '" << item << "'\n";
             throw std::runtime_error("Empty key in key=value pair: " + item);
         }
         
         std::string key = item.substr(0, eq_pos);
         std::string value = item.substr(eq_pos + 1);
         
-        // Trim key and value
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t") + 1);
-        value.erase(0, value.find_first_not_of(" \t"));
-        value.erase(value.find_last_not_of(" \t") + 1);
+        // Strict validation: NO silent trimming of key/value
+        validate_no_whitespace_padding(key, "Environment variable key");
+        // Note: Values can contain spaces, so we don't validate value padding
         
         if (key.empty()) {
-            throw std::runtime_error("Empty key after trimming in: " + item);
+            std::cerr << "Error: Environment variable key is empty in: '" << item << "'\n";
+            throw std::runtime_error("Empty key in: " + item);
         }
+        
+        // Comprehensive POSIX environment variable name validation for key
+        validate_env_var_name(key);
         
         result.push_back(std::make_pair(key, value));
     }
@@ -210,6 +260,17 @@ void set_environment(const std::vector<std::pair<std::string, std::string>>& env
 }
 
 size_t count_open_fd() {
+    // Static asserts to ensure FD type safety at compile time
+    // File descriptors are int type in POSIX, verify type relationships
+    static_assert(sizeof(int) <= sizeof(long),
+                  "int (FD type) must fit in long (strtol return type)");
+    static_assert(std::numeric_limits<int>::max() <= std::numeric_limits<long>::max(),
+                  "int max value must fit in long for safe strtol parsing");
+    static_assert(std::numeric_limits<int>::min() >= std::numeric_limits<long>::min(),
+                  "int min value must be representable in long");
+    static_assert(std::is_signed<int>::value == std::is_signed<long>::value,
+                  "int and long must have same signedness for safe conversion");
+    
     DIR* fd_dir = safe_opendir("/proc/self/fd");
     
     int scan_fd = dirfd(fd_dir);
@@ -265,6 +326,17 @@ size_t count_open_fd() {
 }
 
 size_t close_unwanted_fds(std::vector<int> fd_allowed) {
+    // Static asserts for FD type safety (same as count_open_fd)
+    // File descriptors are int type in POSIX, verify type relationships
+    static_assert(sizeof(int) <= sizeof(long),
+                  "int (FD type) must fit in long (strtol return type)");
+    static_assert(std::numeric_limits<int>::max() <= std::numeric_limits<long>::max(),
+                  "int max value must fit in long for safe strtol parsing");
+    static_assert(std::numeric_limits<int>::min() >= std::numeric_limits<long>::min(),
+                  "int min value must be representable in long");
+    static_assert(std::is_signed<int>::value == std::is_signed<long>::value,
+                  "int and long must have same signedness for safe conversion");
+    
     // Deduplicate and sort the allowed FDs vector
     std::sort(fd_allowed.begin(), fd_allowed.end());
     fd_allowed.erase(std::unique(fd_allowed.begin(), fd_allowed.end()), fd_allowed.end());
