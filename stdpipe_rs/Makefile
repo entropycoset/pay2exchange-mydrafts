@@ -25,8 +25,8 @@ run: build
 
 # Run individual binaries for testing
 run-serv: build
-	@echo "Running stdpipe_serv with FD 3,4..."
-	./target/debug/stdpipe_serv 3 4
+	@echo "Running stdpipe_serv with stdin/stdout (for manual testing)..."
+	./target/debug/stdpipe_serv 0 1
 
 run-back: build
 	@echo "Running stdpipe_back..."

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{close, dup2, execv, fork, pipe, write, read, ForkResult, Pid};
+use nix::unistd::{close, execv, fork, pipe, write, read, ForkResult, Pid};
 use std::env;
 use std::ffi::CString;
 use std::os::unix::io::RawFd;
@@ -108,10 +108,6 @@ impl StdPipeController {
             server_pid: None,
         };
 
-        // Close FDs 3 and 4 if they're open to ensure they're available
-        let _ = close(3);
-        let _ = close(4);
-
         // Create pipes
         controller.cmd_pipe.spawn().context("Failed to create command pipe")?;
         controller.resp_pipe.spawn().context("Failed to create response pipe")?;
@@ -122,10 +118,14 @@ impl StdPipeController {
                   controller.resp_pipe.side_read().get_fd()?,
                   controller.resp_pipe.side_write().get_fd()?);
 
-        eprintln!("StdPipeController: Will duplicate cmd_pipe.side_read().get_fd()={} to FD 3 (child reads)",
+        eprintln!("StdPipeController: Child will use cmd_pipe.read_fd={} for reading commands",
                   controller.cmd_pipe.side_read().get_fd()?);
-        eprintln!("StdPipeController: Will duplicate resp_pipe.side_write().get_fd()={} to FD 4 (child writes)",
+        eprintln!("StdPipeController: Child will use resp_pipe.write_fd={} for writing responses",
                   controller.resp_pipe.side_write().get_fd()?);
+
+        // Get FD values before forking (for logging purposes)
+        let cmd_read_fd = controller.cmd_pipe.side_read().get_fd()?;
+        let resp_write_fd = controller.resp_pipe.side_write().get_fd()?;
 
         // Fork process
         match unsafe { fork() }.context("Failed to fork server process")? {
@@ -137,7 +137,8 @@ impl StdPipeController {
                 controller.cmd_pipe.side_read_mut().close();
                 controller.resp_pipe.side_write_mut().close();
 
-                eprintln!("StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)");
+                eprintln!("StdPipeController: Created anonymous pipes - child uses cmd_input_fd={}, resp_output_fd={}",
+                         cmd_read_fd, resp_write_fd);
 
                 // Give the child a moment to start
                 thread::sleep(Duration::from_millis(100));
@@ -145,42 +146,22 @@ impl StdPipeController {
                 eprintln!("StdPipeController: Server process started successfully");
             }
             ForkResult::Child => {
-                // Child process - set up FDs manually
-                let cmd_read_fd = controller.cmd_pipe.side_read().get_fd()?;
-                let resp_write_fd = controller.resp_pipe.side_write().get_fd()?;
+                // Child process - keep child's pipe ends, close parent's ends
+                eprintln!("Child: Using cmd_read_fd={} for reading commands", cmd_read_fd);
+                eprintln!("Child: Using resp_write_fd={} for writing responses", resp_write_fd);
 
-                eprintln!("Child: About to dup2 cmd_pipe.read_fd()={} to FD 3", cmd_read_fd);
-                if cmd_read_fd != 3 {
-                    dup2(cmd_read_fd, 3).context("Failed to dup2 cmd_pipe read to FD 3")?;
-                }
-
-                eprintln!("Child: About to dup2 resp_pipe.write_fd()={} to FD 4", resp_write_fd);
-                if resp_write_fd != 4 {
-                    dup2(resp_write_fd, 4).context("Failed to dup2 resp_pipe write to FD 4")?;
-                }
-
-                // Close original pipe ends in child
-                if cmd_read_fd != 3 {
-                    let _ = close(cmd_read_fd);
-                }
+                // Close parent's ends in child
                 let cmd_write_fd = controller.cmd_pipe.side_write().get_fd()?;
-                if cmd_write_fd != 3 && cmd_write_fd != 4 {
-                    let _ = close(cmd_write_fd);
-                }
                 let resp_read_fd = controller.resp_pipe.side_read().get_fd()?;
-                if resp_read_fd != 3 && resp_read_fd != 4 {
-                    let _ = close(resp_read_fd);
-                }
-                if resp_write_fd != 4 {
-                    let _ = close(resp_write_fd);
-                }
+                let _ = close(cmd_write_fd);  // Parent writes to this
+                let _ = close(resp_read_fd);  // Parent reads from this
 
-                eprintln!("Child: About to exec server with FD 3,4");
+                eprintln!("Child: About to exec server with FDs {},{}", cmd_read_fd, resp_write_fd);
 
-                // Execute the server
+                // Execute the server with actual FD numbers as arguments
                 let server_path_c = CString::new(server_path)?;
-                let arg1 = CString::new("3")?;
-                let arg2 = CString::new("4")?;
+                let arg1 = CString::new(cmd_read_fd.to_string())?;
+                let arg2 = CString::new(resp_write_fd.to_string())?;
                 
                 execv(&server_path_c, &[server_path_c.as_ref(), &arg1, &arg2])
                     .context("Failed to exec server")?;

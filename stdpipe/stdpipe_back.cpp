@@ -97,66 +97,33 @@ public:
         std::cerr << "StdPipeController: Starting server process: " << server_path << "\n";
         
         try {
-            // Close FDs 3 and 4 if they're open to ensure they're available
-            close(3); close(4);
-            
             // Create pipes using my_pipe class
             cmd_pipe.spawn();
             resp_pipe.spawn();
             
             std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.side_read().get_fd() << "," << cmd_pipe.side_write().get_fd()
                       << "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]\n";
-                      
-            std::cerr << "StdPipeController: Will duplicate cmd_pipe.side_read().get_fd()=" << cmd_pipe.side_read().get_fd() << " to FD 3 (child reads)\n";
-            std::cerr << "StdPipeController: Will duplicate resp_pipe.side_write().get_fd()=" << resp_pipe.side_write().get_fd() << " to FD 4 (child writes)\n";
             
-            // Manual fork for FD setup, then use boost::process to manage child
-            pid_t raw_pid = fork();
-            if (raw_pid == -1) {
-                throw std::runtime_error("Failed to fork server process");
-            }
+            // Convert FD numbers to strings for passing as arguments
+            std::string cmd_fd_str = std::to_string(cmd_pipe.side_read().get_fd());
+            std::string resp_fd_str = std::to_string(resp_pipe.side_write().get_fd());
             
-            if (raw_pid == 0) {
-                // Child process - set up FDs manually
-                int cmd_read_fd = cmd_pipe.side_read().get_fd();
-                int resp_write_fd = resp_pipe.side_write().get_fd();
-                
-                std::cerr << "Child: About to dup2 cmd_pipe.read_fd()=" << cmd_read_fd << " to FD 3\n";
-                if (cmd_read_fd != 3) {
-                    if (dup2(cmd_read_fd, 3) == -1) {
-                        std::cerr << "Child: Failed to dup2 cmd_pipe read to FD 3, errno=" << errno << "\n";
-                        _exit(1);
-                    }
-                }
-                std::cerr << "Child: About to dup2 resp_pipe.write_fd()=" << resp_write_fd << " to FD 4\n";
-                if (resp_write_fd != 4) {
-                    if (dup2(resp_write_fd, 4) == -1) {
-                        std::cerr << "Child: Failed to dup2 resp_pipe write to FD 4, errno=" << errno << "\n";
-                        _exit(1);
-                    }
-                }
-                
-                // Close original pipe ends in child, but only if they're not FD 3 or 4
-                if (cmd_read_fd != 3) close(cmd_read_fd);
-                if (cmd_pipe.side_write().get_fd() != 3 && cmd_pipe.side_write().get_fd() != 4) close(cmd_pipe.side_write().get_fd());
-                if (resp_pipe.side_read().get_fd() != 3 && resp_pipe.side_read().get_fd() != 4) close(resp_pipe.side_read().get_fd());
-                if (resp_write_fd != 4) close(resp_write_fd);
-                
-                std::cerr << "Child: About to exec server with FD 3,4\n";
-                // Execute the server
-                execl(server_path.c_str(), server_path.c_str(), "3", "4", nullptr);
-                std::cerr << "Child: execl failed, errno=" << errno << "\n";
-                _exit(1); // execl failed
-            }
+            std::cerr << "StdPipeController: Will pass FDs " << cmd_fd_str << " and " << resp_fd_str << " to child process\n";
             
-            // Parent process - create boost::process child from existing PID
-            server_process = bp::child(raw_pid);
+            // Start the server process using boost::process, passing the actual FD numbers
+            server_process = bp::child(
+                server_path,
+                cmd_fd_str,
+                resp_fd_str,
+                bp::std_in.close()
+            );
             
             // Close the child's ends in parent
-            cmd_pipe.side_read().close();   // Child uses this for reading (now FD 3)
-            resp_pipe.side_write().close(); // Child uses this for writing (now FD 4)
+            cmd_pipe.side_read().close();   // Child uses this for reading
+            resp_pipe.side_write().close(); // Child uses this for writing
             
-            std::cerr << "StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)\n";
+            std::cerr << "StdPipeController: Created anonymous pipes - cmd input FD " << cmd_fd_str
+                      << ", response output FD " << resp_fd_str << "\n";
             
             // Give the child a moment to start and check if it's still running
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

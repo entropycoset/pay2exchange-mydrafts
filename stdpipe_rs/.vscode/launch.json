@@ -22,11 +22,11 @@
             "preLaunchTask": "rust: cargo build"
         },
         {
-            "name": "Run stdpipe_serv (standalone)",
+            "name": "Run stdpipe_serv (standalone - requires manual FD setup)",
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/stdpipe_serv",
-            "args": ["3", "4"],
+            "args": ["0", "1"],
             "cwd": "${workspaceFolder}",
             "sourceLanguages": ["rust"],
             "preLaunchTask": "rust: cargo build"
