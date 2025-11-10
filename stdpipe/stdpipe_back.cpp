@@ -94,7 +94,7 @@ private:
 
 public:
     StdPipeController(const std::string& server_path) {
-        std::cerr << "StdPipeController: Starting server process: " << server_path << std::endl;
+        std::cerr << "StdPipeController: Starting server process: " << server_path << "\n";
         
         try {
             // Close FDs 3 and 4 if they're open to ensure they're available
@@ -105,10 +105,10 @@ public:
             resp_pipe.spawn();
             
             std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.side_read().get_fd() << "," << cmd_pipe.side_write().get_fd()
-                      << "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]" << std::endl;
+                      << "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]\n";
                       
-            std::cerr << "StdPipeController: Will duplicate cmd_pipe.side_read().get_fd()=" << cmd_pipe.side_read().get_fd() << " to FD 3 (child reads)" << std::endl;
-            std::cerr << "StdPipeController: Will duplicate resp_pipe.side_write().get_fd()=" << resp_pipe.side_write().get_fd() << " to FD 4 (child writes)" << std::endl;
+            std::cerr << "StdPipeController: Will duplicate cmd_pipe.side_read().get_fd()=" << cmd_pipe.side_read().get_fd() << " to FD 3 (child reads)\n";
+            std::cerr << "StdPipeController: Will duplicate resp_pipe.side_write().get_fd()=" << resp_pipe.side_write().get_fd() << " to FD 4 (child writes)\n";
             
             // Manual fork for FD setup, then use boost::process to manage child
             pid_t raw_pid = fork();
@@ -121,17 +121,17 @@ public:
                 int cmd_read_fd = cmd_pipe.side_read().get_fd();
                 int resp_write_fd = resp_pipe.side_write().get_fd();
                 
-                std::cerr << "Child: About to dup2 cmd_pipe.read_fd()=" << cmd_read_fd << " to FD 3" << std::endl;
+                std::cerr << "Child: About to dup2 cmd_pipe.read_fd()=" << cmd_read_fd << " to FD 3\n";
                 if (cmd_read_fd != 3) {
                     if (dup2(cmd_read_fd, 3) == -1) {
-                        std::cerr << "Child: Failed to dup2 cmd_pipe read to FD 3, errno=" << errno << std::endl;
+                        std::cerr << "Child: Failed to dup2 cmd_pipe read to FD 3, errno=" << errno << "\n";
                         _exit(1);
                     }
                 }
-                std::cerr << "Child: About to dup2 resp_pipe.write_fd()=" << resp_write_fd << " to FD 4" << std::endl;
+                std::cerr << "Child: About to dup2 resp_pipe.write_fd()=" << resp_write_fd << " to FD 4\n";
                 if (resp_write_fd != 4) {
                     if (dup2(resp_write_fd, 4) == -1) {
-                        std::cerr << "Child: Failed to dup2 resp_pipe write to FD 4, errno=" << errno << std::endl;
+                        std::cerr << "Child: Failed to dup2 resp_pipe write to FD 4, errno=" << errno << "\n";
                         _exit(1);
                     }
                 }
@@ -142,10 +142,10 @@ public:
                 if (resp_pipe.side_read().get_fd() != 3 && resp_pipe.side_read().get_fd() != 4) close(resp_pipe.side_read().get_fd());
                 if (resp_write_fd != 4) close(resp_write_fd);
                 
-                std::cerr << "Child: About to exec server with FD 3,4" << std::endl;
+                std::cerr << "Child: About to exec server with FD 3,4\n";
                 // Execute the server
                 execl(server_path.c_str(), server_path.c_str(), "3", "4", nullptr);
-                std::cerr << "Child: execl failed, errno=" << errno << std::endl;
+                std::cerr << "Child: execl failed, errno=" << errno << "\n";
                 _exit(1); // execl failed
             }
             
@@ -156,7 +156,7 @@ public:
             cmd_pipe.side_read().close();   // Child uses this for reading (now FD 3)
             resp_pipe.side_write().close(); // Child uses this for writing (now FD 4)
             
-            std::cerr << "StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)" << std::endl;
+            std::cerr << "StdPipeController: Created anonymous pipes - FD 3 (cmd input), FD 4 (response output)\n";
             
             // Give the child a moment to start and check if it's still running
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -165,17 +165,17 @@ public:
                 throw std::runtime_error("Failed to start server process");
             }
             
-            std::cerr << "StdPipeController: Server process started successfully" << std::endl;
+            std::cerr << "StdPipeController: Server process started successfully\n";
             
         } catch (const std::exception& e) {
-            std::cerr << "Error starting server process: " << e.what() << std::endl;
+            std::cerr << "Error starting server process: " << e.what() << "\n";
             throw;
         }
     }
 
     ~StdPipeController() {
         if (server_process.running()) {
-            std::cerr << "StdPipeController: Terminating server process" << std::endl;
+            std::cerr << "StdPipeController: Terminating server process\n";
             server_process.terminate();
             server_process.wait();
         }
@@ -183,7 +183,7 @@ public:
     }
 
     void send_command(const std::string& command) {
-        std::cerr << "StdPipeController: Sending command: " << command << std::endl;
+        std::cerr << "StdPipeController: Sending command: " << command << "\n";
         std::string cmd_with_newline = command + "\n";
         ssize_t bytes_written = write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
         
@@ -211,12 +211,12 @@ public:
             response.pop_back();
         }
         
-        std::cerr << "StdPipeController: Received response: " << response << std::endl;
+        std::cerr << "StdPipeController: Received response: " << response << "\n";
         return response;
     }
 
     void run_test() {
-        std::cerr << "StdPipeController: Starting communication test" << std::endl;
+        std::cerr << "StdPipeController: Starting communication test\n";
         
         try {
             // Test 1: Send ping, expect pong
@@ -225,7 +225,7 @@ public:
             if (response1 != "pong") {
                 throw std::runtime_error("Expected 'pong' but got: '" + response1 + "'");
             }
-            std::cerr << "✓ Ping test passed" << std::endl;
+            std::cerr << "✓ Ping test passed\n";
             
             // Small delay
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -236,7 +236,7 @@ public:
             if (response2 != "goodbye") {
                 throw std::runtime_error("Expected 'goodbye' but got: '" + response2 + "'");
             }
-            std::cerr << "✓ Quit test passed" << std::endl;
+            std::cerr << "✓ Quit test passed\n";
             
             // Close our end of the pipes
             cmd_pipe.side_write().close();
@@ -250,10 +250,10 @@ public:
                                        std::to_string(server_process.exit_code()));
             }
             
-            std::cerr << "✓ All tests passed successfully" << std::endl;
+            std::cerr << "✓ All tests passed successfully\n";
             
         } catch (const std::exception& e) {
-            std::cerr << "✗ Test failed: " << e.what() << std::endl;
+            std::cerr << "✗ Test failed: " << e.what() << "\n";
             throw;
         }
     }
@@ -261,7 +261,7 @@ public:
 
 int main(int argc, char* argv[]) {
     try {
-        std::cerr << "StdPipe Backend Controller starting..." << std::endl;
+        std::cerr << "StdPipe Backend Controller starting...\n";
         
         // Determine server path - assume it's in the same directory
         std::string server_path = "./stdpipe_serv";
@@ -272,14 +272,14 @@ int main(int argc, char* argv[]) {
         StdPipeController controller(server_path);
         controller.run_test();
         
-        std::cerr << "StdPipe Backend Controller completed successfully" << std::endl;
+        std::cerr << "StdPipe Backend Controller completed successfully\n";
         return 0;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception caught: " << e.what() << std::endl;
+        std::cerr << "Exception caught: " << e.what() << "\n";
         return 1;
     } catch (...) {
-        std::cerr << "Unknown exception caught" << std::endl;
+        std::cerr << "Unknown exception caught\n";
         return 2;
     }
 }
