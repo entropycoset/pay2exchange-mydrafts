@@ -17,18 +17,15 @@ private:
     bool m_owned; // tells if this object owns this FD and should close it
 
 public:
-    // Empty constructor sets -1, false
     my_fd() : m_fd(-1), m_owned(false) {}
     
-    // Constructor assigns args to members
     my_fd(int _id, bool _owned) : m_fd(_id), m_owned(_owned) {}
     
-    // Destructor: if owned then close and mark as not owned
-    ~my_fd() {
+    virtual ~my_fd() {
         close();
     }
     
-    // Close function that closes if owned
+    /// Closes FD if it is owned by us and opened
     void close() {
         if (m_owned && m_fd >= 0) {
             ::close(m_fd);
@@ -37,11 +34,14 @@ public:
         }
     }
     
-    // Get the file descriptor
-    int fd() const { return m_fd; }
+    bool is_open() const { return m_fd>=0; }
+
+    /// Get the file descriptor, it will be valid FD (otherwise we throw)
+    int get_fd() const { if (!is_open()) throw std::runtime_error("Tried to use invalid/closed FD"); return m_fd; }
     
-    // Set the file descriptor and ownership
-    void set(int _fd, bool _owned) {
+    // Set the file descriptor and ownership. The _fd must be valid (>=-1) otherwise throws and leave object unchanged
+    void set_fd(int _fd, bool _owned) {
+        if (!(_fd>=0)) throw std::runtime_error("Invalid fd being set");
         close(); // Close existing if owned
         m_fd = _fd;
         m_owned = _owned;
@@ -54,18 +54,18 @@ private:
     my_fd m_write;
 
 public:
-    // Constructor does nothing
-    my_pipe() {}
+    my_pipe()=default;
+    virtual ~my_pipe()=default;
     
-    // Function spawn() calls pipe() and puts resulting 2 integers into our my_fd members
+    // Function spawn() calls pipe() and save the FDs
     void spawn() {
         int pipe_fds[2];
         if (pipe(pipe_fds) == -1) {
             throw std::runtime_error("Failed to create pipe");
         }
-        
-        m_read.set(pipe_fds[0], true);   // Read end, owned
-        m_write.set(pipe_fds[1], true);  // Write end, owned
+        // we own bot hends        
+        m_read.set_fd(pipe_fds[0], true);   // Read end
+        m_write.set_fd(pipe_fds[1], true);  // Write end
     }
     
     // Expose close functions
@@ -79,11 +79,11 @@ public:
     
     // Expose FD getter functions
     int read_fd() const {
-        return m_read.fd();
+        return m_read.get_fd();
     }
     
     int write_fd() const {
-        return m_write.fd();
+        return m_write.get_fd();
     }
 };
 
