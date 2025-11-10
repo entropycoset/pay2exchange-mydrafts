@@ -7,12 +7,15 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <boost/process.hpp>
+
+namespace bp = boost::process;
 
 class StdPipeController {
 private:
     int cmd_write_fd;         // Write commands to server (parent's end)
     int resp_read_fd;         // Read responses from server (parent's end)
-    pid_t server_pid;         // The stdpipe_serv process ID
+    bp::child server_process; // The stdpipe_serv process
 
 public:
     StdPipeController(const std::string& server_path) {
@@ -42,17 +45,16 @@ public:
             cmd_write_fd = cmd_pipe[1];   // Parent writes commands here
             resp_read_fd = resp_pipe[0];  // Parent reads responses here
             
-            // Fork and exec the server process
-            server_pid = fork();
-            if (server_pid == -1) {
+            // Manual fork for FD setup, then use boost::process to manage child
+            pid_t raw_pid = fork();
+            if (raw_pid == -1) {
                 close(cmd_pipe[0]); close(cmd_pipe[1]);
                 close(resp_pipe[0]); close(resp_pipe[1]);
                 throw std::runtime_error("Failed to fork server process");
             }
             
-            if (server_pid == 0) {
-                // Child process
-                // Duplicate pipes to FD 3 and 4
+            if (raw_pid == 0) {
+                // Child process - set up FDs manually
                 std::cerr << "Child: About to dup2 cmd_pipe[0]=" << cmd_pipe[0] << " to FD 3" << std::endl;
                 if (cmd_pipe[0] != 3) {
                     if (dup2(cmd_pipe[0], 3) == -1) {
@@ -81,8 +83,10 @@ public:
                 _exit(1); // execl failed
             }
             
-            // Parent process
-            // Close the child's ends in the parent
+            // Parent process - create boost::process child from existing PID
+            server_process = bp::child(raw_pid);
+            
+            // Close the child's ends in parent
             close(cmd_pipe[0]);  // Child uses this for reading (now FD 3)
             close(resp_pipe[1]); // Child uses this for writing (now FD 4)
             
@@ -90,18 +94,9 @@ public:
             
             // Give the child a moment to start and check if it's still running
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            int status;
-            pid_t result = waitpid(server_pid, &status, WNOHANG);
-            if (result != 0) {
-                if (result == server_pid) {
-                    if (WIFEXITED(status)) {
-                        throw std::runtime_error("Server process exited immediately with code: " + std::to_string(WEXITSTATUS(status)));
-                    } else {
-                        throw std::runtime_error("Server process terminated abnormally");
-                    }
-                } else {
-                    throw std::runtime_error("Failed to check server process status");
-                }
+            
+            if (!server_process.running()) {
+                throw std::runtime_error("Failed to start server process");
             }
             
             std::cerr << "StdPipeController: Server process started successfully" << std::endl;
@@ -113,10 +108,10 @@ public:
     }
 
     ~StdPipeController() {
-        if (server_pid > 0) {
+        if (server_process.running()) {
             std::cerr << "StdPipeController: Terminating server process" << std::endl;
-            kill(server_pid, SIGTERM);
-            waitpid(server_pid, nullptr, 0);
+            server_process.terminate();
+            server_process.wait();
         }
         if (cmd_write_fd >= 0) close(cmd_write_fd);
         if (resp_read_fd >= 0) close(resp_read_fd);
@@ -185,11 +180,11 @@ public:
             resp_read_fd = -1;
             
             // Wait for server to exit
-            int status;
-            waitpid(server_pid, &status, 0);
+            server_process.wait();
             
-            if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-                throw std::runtime_error("Server process exited with error");
+            if (server_process.exit_code() != 0) {
+                throw std::runtime_error("Server process exited with code: " +
+                                       std::to_string(server_process.exit_code()));
             }
             
             std::cerr << "✓ All tests passed successfully" << std::endl;

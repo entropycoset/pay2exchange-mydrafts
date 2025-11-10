@@ -4,31 +4,40 @@
 #include <fstream>
 #include <unistd.h>
 #include <memory>
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 
 class StdPipeServer {
 private:
-    std::unique_ptr<std::ifstream> cmd_in_file;   // command input pipe
-    std::unique_ptr<std::ofstream> cmd_out_file;  // command output pipe
+    using fd_source = boost::iostreams::file_descriptor_source;
+    using fd_sink = boost::iostreams::file_descriptor_sink;
+    using fd_stream_in = boost::iostreams::stream<fd_source>;
+    using fd_stream_out = boost::iostreams::stream<fd_sink>;
+    
+    std::unique_ptr<fd_stream_in> cmd_in_file;   // command input pipe
+    std::unique_ptr<fd_stream_out> cmd_out_file; // command output pipe
 
 public:
     StdPipeServer(int cmd_in_fd, int cmd_out_fd) {
         std::cerr << "Program starting - StdPipe Server initializing with FDs: "
                   << cmd_in_fd << ", " << cmd_out_fd << std::endl;
 
-        // Open file streams for the anonymous pipes using /proc/self/fd/
-        std::string cmd_in_path = "/proc/self/fd/" + std::to_string(cmd_in_fd);
-        std::string cmd_out_path = "/proc/self/fd/" + std::to_string(cmd_out_fd);
+        // Create boost::iostreams from native file descriptors
+        try {
+            cmd_in_file = std::make_unique<fd_stream_in>(cmd_in_fd, boost::iostreams::never_close_handle);
+            if (!cmd_in_file->is_open()) {
+                std::cerr << "Error: Failed to open command input pipe (FD " << cmd_in_fd << ")" << std::endl;
+                throw std::runtime_error("Failed to open command input pipe");
+            }
 
-        cmd_in_file = std::make_unique<std::ifstream>(cmd_in_path);
-        if (!cmd_in_file->is_open() || cmd_in_file->fail()) {
-            std::cerr << "Error: Failed to open command input pipe (FD " << cmd_in_fd << ")" << std::endl;
-            throw std::runtime_error("Failed to open command input pipe");
-        }
-
-        cmd_out_file = std::make_unique<std::ofstream>(cmd_out_path);
-        if (!cmd_out_file->is_open() || cmd_out_file->fail()) {
-            std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")" << std::endl;
-            throw std::runtime_error("Failed to open command output pipe");
+            cmd_out_file = std::make_unique<fd_stream_out>(cmd_out_fd, boost::iostreams::never_close_handle);
+            if (!cmd_out_file->is_open()) {
+                std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")" << std::endl;
+                throw std::runtime_error("Failed to open command output pipe");
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error creating boost::iostreams from FDs: " << e.what() << std::endl;
+            throw;
         }
 
         std::cerr << "Program starting - StdPipe Server initialized successfully" << std::endl;
