@@ -1,14 +1,24 @@
-build/*
-build-*/*
-.vscode
-cmake_install.cmake
+# C++ build artifacts
+cpp/build/*
+cpp/build-*/*
+cpp/cmake_install.cmake
+cpp/CMakeCache.txt
+cpp/CMakeFiles/
+cpp/Makefile
+cpp/print_env_extra
+cpp/safe_exec
+cpp/stdpipe_back
+cpp/stdpipe_serv
 
-CMakeCache.txt
-CMakeFiles/
-Makefile
-print_env_extra
-safe_exec
-stdpipe_back
-stdpipe_serv
+# Rust build artifacts
+rs/target/
+rs/Cargo.lock
 
+# IDE files
+.vscode/
+*.swp
+*.swo
 
+# OS files
+.DS_Store
+Thumbs.db
