@@ -7,6 +7,9 @@ use std::os::unix::io::RawFd;
 use std::thread;
 use std::time::Duration;
 
+// Import our envcleaner module
+use stdpipe_rs::envcleaner;
+
 struct MyFd {
     fd: RawFd,
     owned: bool,
@@ -102,6 +105,11 @@ impl StdPipeController {
     fn new(server_path: &str) -> Result<Self> {
         eprintln!("StdPipeController: Starting server process: {}", server_path);
 
+        // Count initial open FDs for diagnostics
+        let initial_fd_count = envcleaner::count_open_fd()
+            .context("Failed to count initial open file descriptors")?;
+        eprintln!("StdPipeController: Initial open FD count: {}", initial_fd_count);
+
         let mut controller = StdPipeController {
             cmd_pipe: MyPipe::new(),
             resp_pipe: MyPipe::new(),
@@ -150,11 +158,19 @@ impl StdPipeController {
                 eprintln!("Child: Using cmd_read_fd={} for reading commands", cmd_read_fd);
                 eprintln!("Child: Using resp_write_fd={} for writing responses", resp_write_fd);
 
-                // Close parent's ends in child
-                let cmd_write_fd = controller.cmd_pipe.side_write().get_fd()?;
-                let resp_read_fd = controller.resp_pipe.side_read().get_fd()?;
-                let _ = close(cmd_write_fd);  // Parent writes to this
-                let _ = close(resp_read_fd);  // Parent reads from this
+                // Count FDs before cleanup
+                let child_initial_fd_count = envcleaner::count_open_fd()
+                    .context("Child: Failed to count FDs before cleanup")?;
+                eprintln!("Child: FD count before cleanup: {}", child_initial_fd_count);
+
+                // Clean up all FDs except the ones we want to pass to the server
+                // Keep: stdin(0), stdout(1), stderr(2), cmd_read_fd, resp_write_fd
+                let allowed_fds = vec![0, 1, 2, cmd_read_fd, resp_write_fd];
+                let closed_count = envcleaner::close_all_except_allowed(allowed_fds)
+                    .context("Child: Failed to close non-essential file descriptors")?;
+                eprintln!("Child: Closed {} non-essential FDs", closed_count);
+
+                eprintln!("Child: FD cleanup completed (verification disabled to prevent reopening FDs)");
 
                 eprintln!("Child: About to exec server with FDs {},{}", cmd_read_fd, resp_write_fd);
 
