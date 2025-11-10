@@ -12,7 +12,7 @@ find_package(Boost REQUIRED COMPONENTS system filesystem iostreams)
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
-add_executable(safe_exec safe_exec.cpp)
+add_executable(safe_exec safe_exec.cpp envcleaner.cpp)
 
 # Link Boost to stdpipe_back and stdpipe_serv
 target_link_libraries(stdpipe_back ${Boost_LIBRARIES})
