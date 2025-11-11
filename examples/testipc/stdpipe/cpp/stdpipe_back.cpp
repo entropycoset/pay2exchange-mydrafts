@@ -259,6 +259,23 @@ public:
     }
 };
 
+void print_usage(const std::string& program_name) {
+    std::cout << "StdPipe Backend Controller\n\n";
+    std::cout << "Usage: " << program_name << " [server_path] [cleanup_exec_prog]\n\n";
+    std::cout << "Arguments:\n";
+    std::cout << "  server_path       Path to stdpipe_serv executable (default: ./stdpipe_serv)\n";
+    std::cout << "  cleanup_exec_prog Optional path to clean_exec program for environment cleanup\n\n";
+    std::cout << "Description:\n";
+    std::cout << "  Creates anonymous pipes and starts a stdpipe_serv process to handle commands.\n";
+    std::cout << "  When cleanup_exec_prog is provided, the server runs in a cleaned environment:\n";
+    std::cout << "  - FD cleanup: Only stdin/stdout/stderr and the two pipe FDs are kept\n";
+    std::cout << "  - Environment cleanup: Only HOME and USER environment variables are preserved\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  " << program_name << "                              # Use default server path\n";
+    std::cout << "  " << program_name << " ./stdpipe_serv               # Specify server path\n";
+    std::cout << "  " << program_name << " ./stdpipe_serv ./clean_exec  # Use cleanup for isolation\n\n";
+}
+
 /**
  * StdPipe Backend Controller
  *
@@ -281,6 +298,12 @@ int main(int argc, char* argv[]) {
                 throw std::runtime_error("Null argv element at index " + std::to_string(i));
             }
             argvect.push_back(std::string(argv[i]));
+        }
+        
+        // Check for --help
+        if (argvect.size() > 1 && argvect.at(1) == "--help") {
+            print_usage(argvect.at(0));
+            return 0;
         }
         
         std::cerr << "StdPipe Backend Controller starting...\n";

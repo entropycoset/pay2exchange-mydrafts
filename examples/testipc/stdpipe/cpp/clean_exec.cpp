@@ -161,6 +161,31 @@ void cleanup_child_environment(const CleanupOptions& opts) {
     }
 }
 
+void print_usage(const std::string& program_name) {
+    std::cout << "Clean Exec - Environment and File Descriptor Cleanup Tool\n\n";
+    std::cout << "Usage: " << program_name << " <mode> [options]\n\n";
+    std::cout << "Modes:\n";
+    std::cout << "  --tests                       Run FD management tests\n";
+    std::cout << "  --run <program> [args...]     Execute program with cleanup options\n";
+    std::cout << "  --help                        Show this help message\n\n";
+    std::cout << "Description:\n";
+    std::cout << "  --tests mode:\n";
+    std::cout << "    Runs internal tests to verify file descriptor management functions.\n";
+    std::cout << "    No additional arguments required.\n\n";
+    std::cout << "  --run mode:\n";
+    std::cout << "    Executes a program with optional environment and FD cleanup.\n";
+    std::cout << "    Requires at least a program path to execute.\n\n";
+    std::cout << "    Available cleanup options for --run:\n";
+    std::cout << "      --clean-fd-except <fds>     Keep only specified FDs (e.g., '0,1,2')\n";
+    std::cout << "      --clean-env-except <vars>   Keep only specified env vars (e.g., 'HOME,USER')\n";
+    std::cout << "      --set-env <pairs>           Set env vars (e.g., 'HOME=/tmp,VAR=value')\n\n";
+    std::cout << "Examples:\n";
+    std::cout << "  " << program_name << " --tests\n";
+    std::cout << "  " << program_name << " --run /bin/ls -la\n";
+    std::cout << "  " << program_name << " --run --clean-fd-except 0,1,2 /bin/echo hello\n";
+    std::cout << "  " << program_name << " --run --clean-env-except HOME,USER /usr/bin/env\n\n";
+}
+
 int main_run(int argc, char* argv[]) {
     try {
         // First convert argv to safe vector
@@ -187,7 +212,9 @@ int main_run(int argc, char* argv[]) {
         
         // Skip the first argument ("--run") and parse the rest - use safe access
         if (argvect.size() < 3) {
-            throw std::runtime_error("Insufficient arguments for --run mode");
+            std::cerr << "Error: --run mode requires at least a program to execute\n\n";
+            print_usage(argvect.at(0));
+            return 1;
         }
         
         std::vector<std::string> args_vec;
@@ -297,22 +324,28 @@ int main(int argc, char* argv[]) {
         argvect.push_back(std::string(argv[i]));
     }
     
-    if (argvect.size() < 2) {
-        std::cerr << "Usage: " << argvect.at(0) << " --tests\n";
-        std::cerr << "       " << argvect.at(0) << " --run <program> [args...]\n";
-        return 1;
+    // Check for --help or insufficient arguments
+    if (argvect.size() < 2 || argvect.at(1) == "--help") {
+        print_usage(argvect.at(0));
+        return argvect.size() < 2 ? 1 : 0;
     }
     
     std::string mode = argvect.at(1);
     
     if (mode == "--tests") {
+        // No additional arguments needed for tests
         return main_tests();
     } else if (mode == "--run") {
+        // Validate that we have at least a program to run
+        if (argvect.size() < 3) {
+            std::cerr << "Error: --run mode requires at least a program to execute\n\n";
+            print_usage(argvect.at(0));
+            return 1;
+        }
         return main_run(argc, argv);
     } else {
-        std::cerr << "Error: First argument must be --tests or --run\n";
-        std::cerr << "Usage: " << argvect.at(0) << " --tests\n";
-        std::cerr << "       " << argvect.at(0) << " --run <program> [args...]\n";
+        std::cerr << "Error: Unknown mode '" << mode << "'. Must be --tests, --run, or --help\n\n";
+        print_usage(argvect.at(0));
         return 1;
     }
 }

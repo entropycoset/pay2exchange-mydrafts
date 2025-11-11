@@ -159,6 +159,24 @@ public:
     }
 };
 
+void print_usage(const std::string& program_name) {
+    std::cout << "StdPipe Server\n\n";
+    std::cout << "Usage: " << program_name << " <cmd_in_fd> <cmd_out_fd>\n\n";
+    std::cout << "Arguments:\n";
+    std::cout << "  cmd_in_fd    File descriptor number for command input pipe (required)\n";
+    std::cout << "  cmd_out_fd   File descriptor number for command output pipe (required)\n\n";
+    std::cout << "Description:\n";
+    std::cout << "  Server process that communicates via anonymous pipes using the provided\n";
+    std::cout << "  file descriptors. Typically spawned by stdpipe_back controller.\n\n";
+    std::cout << "Commands:\n";
+    std::cout << "  ping         Responds with 'pong'\n";
+    std::cout << "  quit         Responds with 'goodbye' and exits\n";
+    std::cout << "  <unknown>    Responds with 'command unknown'\n\n";
+    std::cout << "Note:\n";
+    std::cout << "  This program is usually not run directly but launched by stdpipe_back\n";
+    std::cout << "  which creates the pipes and passes the file descriptor numbers.\n\n";
+}
+
 int main(int argc, char* argv[]) {
     try {
         // First convert argv to safe vector
@@ -170,9 +188,15 @@ int main(int argc, char* argv[]) {
             argvect.push_back(std::string(argv[i]));
         }
         
+        // Check for --help
+        if (argvect.size() > 1 && argvect.at(1) == "--help") {
+            print_usage(argvect.at(0));
+            return 0;
+        }
+        
         // Expect command line arguments for the two pipe file descriptors
         if (argvect.size() != 3) {
-            std::cerr << "Usage: " << argvect.at(0) << " <cmd_in_fd> <cmd_out_fd>\n";
+            print_usage(argvect.at(0));
             std::cerr << "Error: Expected exactly 2 file descriptors for anonymous pipes\n";
             throw std::runtime_error("Invalid command line arguments");
         }
