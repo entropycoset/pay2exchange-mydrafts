@@ -501,14 +501,20 @@ public:
             // Light green for stdout
             std::cout << colordetect::colorstr("[CHILD STDOUT] ", colordetect::Color::LightGreen)
                       << colordetect::colorstr(accumulated_stdout, colordetect::Color::LightGreen);
-            if (accumulated_stdout.back() != '\n') std::cout << '\n';
+            if (accumulated_stdout.back() != '\n') {
+                // Reset color before newline
+                std::cout << colordetect::colorstr("", colordetect::Color::Default) << '\n';
+            }
             accumulated_stdout.clear();
         }
         if (!accumulated_stderr.empty()) {
             // Light red for stderr
             std::cout << colordetect::colorstr("[CHILD STDERR] ", colordetect::Color::LightRed)
                       << colordetect::colorstr(accumulated_stderr, colordetect::Color::LightRed);
-            if (accumulated_stderr.back() != '\n') std::cout << '\n';
+            if (accumulated_stderr.back() != '\n') {
+                // Reset color before newline
+                std::cout << colordetect::colorstr("", colordetect::Color::Default) << '\n';
+            }
             accumulated_stderr.clear();
         }
     }
