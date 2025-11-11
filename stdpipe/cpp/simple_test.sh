@@ -16,7 +16,7 @@ echo
 
 # Test 2: Wrapper mode (with cleanup_exec)
 echo "=== Test 2: Wrapper mode (with cleanup_exec wrapper) ==="
-./stdpipe_back ./stdpipe_serv ./safe_exec
+./stdpipe_back ./stdpipe_serv ./clean_exec
 if [ $? -eq 0 ]; then
     echo "✓ Wrapper mode test PASSED"
 else

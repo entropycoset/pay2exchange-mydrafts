@@ -12,7 +12,7 @@ find_package(Boost REQUIRED COMPONENTS system filesystem iostreams program_optio
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
-add_executable(safe_exec safe_exec.cpp envcleaner.cpp)
+add_executable(clean_exec clean_exec.cpp envcleaner.cpp)
 add_executable(print_env_extra print_env_extra.cpp)
 
 # Link Boost to stdpipe_back and stdpipe_serv
@@ -22,9 +22,9 @@ target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(stdpipe_serv ${Boost_LIBRARIES})
 target_include_directories(stdpipe_serv PRIVATE ${Boost_INCLUDE_DIRS})
 
-# Link Boost to safe_exec
-target_link_libraries(safe_exec ${Boost_LIBRARIES})
-target_include_directories(safe_exec PRIVATE ${Boost_INCLUDE_DIRS})
+# Link Boost to clean_exec
+target_link_libraries(clean_exec ${Boost_LIBRARIES})
+target_include_directories(clean_exec PRIVATE ${Boost_INCLUDE_DIRS})
 
 # Copy simple_test.sh to build directory
 configure_file(${CMAKE_SOURCE_DIR}/simple_test.sh ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh COPYONLY)
@@ -46,16 +46,16 @@ add_custom_target(copy_test_script
 
 # Add explicit "build_all" target that includes binaries and test script
 add_custom_target(build_all
-    DEPENDS stdpipe_back stdpipe_serv safe_exec print_env_extra copy_test_script
+    DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra copy_test_script
     COMMENT "Building all executables and copying test script"
 )
 
 # Add custom target "run" that executes the test script
 add_custom_target(run
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh
-    DEPENDS build_all safe_exec stdpipe_back stdpipe_serv
+    DEPENDS build_all clean_exec stdpipe_back stdpipe_serv
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running test script (requires cleanup_exec, stdpipe_back, stdpipe_serv)"
+    COMMENT "Running test script (requires clean_exec, stdpipe_back, stdpipe_serv)"
 )
 
 # Copy test automation script to build directory
@@ -72,7 +72,7 @@ endif()
 # Add custom target "test2" that executes the environment and FD cleanup tests
 add_custom_target(test2
     COMMAND python3 ${CMAKE_CURRENT_BINARY_DIR}/test_env_fd_cleanup.py
-    DEPENDS build_all safe_exec stdpipe_back print_env_extra
+    DEPENDS build_all clean_exec stdpipe_back print_env_extra
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running environment and FD cleanup tests (requires cleanup_exec, stdpipe_back, print_env_extra)"
+    COMMENT "Running environment and FD cleanup tests (requires clean_exec, stdpipe_back, print_env_extra)"
 )

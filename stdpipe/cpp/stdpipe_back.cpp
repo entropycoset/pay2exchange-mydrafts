@@ -265,7 +265,7 @@ public:
  * Usage: ./stdpipe_back [server_path] [cleanup_exec_prog]
  *
  * When cleanup_exec_prog is provided, the program executes:
- * ./safe_exec --run --clean-fd-except 0,1,2,<cmd_fd>,<resp_fd> --clean-env-except HOME,USER ./stdpipe_serv <cmd_fd> <resp_fd>
+ * ./clean_exec --run --clean-fd-except 0,1,2,<cmd_fd>,<resp_fd> --clean-env-except HOME,USER ./stdpipe_serv <cmd_fd> <resp_fd>
  *
  * This ensures:
  * - FD cleanup: Only stdin/stdout/stderr and the two pipe FDs are kept

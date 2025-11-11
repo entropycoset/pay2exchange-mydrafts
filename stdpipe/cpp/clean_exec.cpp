@@ -11,21 +11,21 @@
 
 namespace po = boost::program_options;
 
-class CleanupExecutor {
+class CleanExecutor {
 private:
     pid_t child_pid = -1;
     
 public:
-    ~CleanupExecutor() {
+    ~CleanExecutor() {
         if (child_pid > 0) {
-            std::cerr << "CleanupExecutor: Cleaning up child process " << child_pid << "\n";
+            std::cerr << "CleanExecutor: Cleaning up child process " << child_pid << "\n";
             kill(child_pid, SIGTERM);
             waitpid(child_pid, nullptr, 0);
         }
     }
     
     int execute(const std::string& program, const std::vector<std::string>& args) {
-        std::cerr << "CleanupExecutor: Executing " << program;
+        std::cerr << "CleanExecutor: Executing " << program;
         for (const auto& arg : args) {
             std::cerr << " " << arg;
         }
@@ -238,7 +238,7 @@ int main_run(int argc, char* argv[]) {
             program_args = vm["program-args"].as<std::vector<std::string>>();
         }
         
-        std::cerr << "CleanupExecutor: Executing " << program;
+        std::cerr << "CleanExecutor: Executing " << program;
         for (const auto& arg : program_args) {
             std::cerr << " " << arg;
         }
@@ -278,11 +278,11 @@ int main_run(int argc, char* argv[]) {
             exit_code = -1; // Child terminated abnormally
         }
         
-        std::cerr << "CleanupExecutor: Program exited with code " << exit_code << "\n";
+        std::cerr << "CleanExecutor: Program exited with code " << exit_code << "\n";
         return exit_code;
         
     } catch (const std::exception& e) {
-        std::cerr << "CleanupExecutor error: " << e.what() << "\n";
+        std::cerr << "CleanExecutor error: " << e.what() << "\n";
         return 1;
     }
 }
