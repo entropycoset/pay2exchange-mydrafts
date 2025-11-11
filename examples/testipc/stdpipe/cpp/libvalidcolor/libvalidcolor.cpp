@@ -103,7 +103,7 @@ std::string colortxt(const std::string& txt, int fg, int bg) {
 
     if (!has) return txt;
 
-    return "\033[" + seq.str() + "m" + txt + "\033[39;49m";
+    return "\033[" + seq.str() + "m" + txt + "\033[0m";
 }
 
 std::string colortxt(const std::string& txt, Color fg, Color bg) {

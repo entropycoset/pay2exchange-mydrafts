@@ -6,12 +6,23 @@
 #include <fstream>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/select.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <cstring>
 #include <boost/process.hpp>
 #include "libvalidcolor/libvalidcolor.hpp"
 
 namespace bp = boost::process;
+
+// Template function to wrap libc functions and throw on error with errno text
+template<typename T>
+T check_syscall(T result, const char* syscall_name) {
+    if (result == -1) {
+        throw std::runtime_error(std::string(syscall_name) + " failed: " + std::strerror(errno));
+    }
+    return result;
+}
 
 enum class StdOutErrMode {
     OutErrModeHide,     // Redirect stdout/stderr to /dev/null
@@ -36,7 +47,12 @@ public:
     /// Closes FD if it is owned by us and opened
     void close() {
         if (m_owned && m_fd >= 0) {
-            ::close(m_fd);
+            // Note: We don't use check_syscall for close() because it might legitimately
+            // fail (e.g., if already closed) and we want to proceed with cleanup anyway
+            if (::close(m_fd) == -1) {
+                // Log but don't throw - we're in cleanup mode
+                std::cerr << "Warning: close() failed for FD " << m_fd << ": " << std::strerror(errno) << "\n";
+            }
             m_owned = false;
             m_fd = -1;
         }
@@ -68,9 +84,7 @@ public:
     // Function spawn() calls pipe() and save the FDs
     void spawn() {
         int pipe_fds[2];
-        if (pipe(pipe_fds) == -1) {
-            throw std::runtime_error("Failed to create pipe");
-        }
+        check_syscall(pipe(pipe_fds), "pipe");
         // we own both ends
         m_read.set_fd(pipe_fds[0], true);   // Read end
         m_write.set_fd(pipe_fds[1], true);  // Write end
@@ -130,11 +144,11 @@ public:
                 child_stderr_pipe.spawn();
                 
                 // Set non-blocking mode on read ends
-                int flags = fcntl(child_stdout_pipe.side_read().get_fd(), F_GETFL, 0);
-                fcntl(child_stdout_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK);
+                int flags = check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
+                check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
                 
-                flags = fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0);
-                fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK);
+                flags = check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
+                check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
                 
                 std::cerr << "StdPipeController: Created secure anonymous pipes for stdout/stderr capture\n";
             }
@@ -164,13 +178,13 @@ public:
                         break;
                     case StdOutErrMode::OutErrModeCapture: {
                         // Use manual fork/exec approach for precise control
-                        pid_t pid = fork();
+                        pid_t pid = check_syscall(fork(), "fork");
                         if (pid == 0) {
                             // Child process
-                            dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO);
-                            dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO);
-                            dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str()));
-                            dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str()));
+                            check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
+                            check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
+                            check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
+                            check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
                             
                             // Close all our pipe ends in child
                             cmd_pipe.side_write().close();
@@ -227,13 +241,13 @@ public:
                         break;
                     case StdOutErrMode::OutErrModeCapture: {
                         // For cleanup_exec path, use manual fork/exec as well
-                        pid_t pid = fork();
+                        pid_t pid = check_syscall(fork(), "fork");
                         if (pid == 0) {
                             // Child process
-                            dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO);
-                            dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO);
-                            dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str()));
-                            dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str()));
+                            check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
+                            check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
+                            check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
+                            check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
                             
                             // Close all our pipe ends in child
                             cmd_pipe.side_write().close();
@@ -314,21 +328,47 @@ public:
                                           colordetect::Color::White, colordetect::Color::Blue) << "\n";
         
         std::string cmd_with_newline = command + "\n";
-        ssize_t bytes_written = write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
+        ssize_t bytes_written = check_syscall(write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length()), "write");
         
-        if (bytes_written == -1 || bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
-            throw std::runtime_error("Failed to send command to server");
+        if (bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
+            throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
+                                    " of " + std::to_string(cmd_with_newline.length()) + " bytes written");
         }
     }
 
     std::string read_response() {
         std::string response;
         char buffer[1024];
-        ssize_t bytes_read = read(resp_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1);
         
-        if (bytes_read == -1) {
-            throw std::runtime_error("Failed to read response from server");
-        } else if (bytes_read == 0) {
+        // Add 5-second timeout using select() with proper error handling
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        
+        int fd = resp_pipe.side_read().get_fd();
+        if (fd < 0 || fd >= FD_SETSIZE) {
+            throw std::runtime_error("Invalid file descriptor for select(): " + std::to_string(fd));
+        }
+        
+        FD_SET(fd, &read_fds);
+        
+        struct timeval timeout;
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
+        
+        int select_result = check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout), "select");
+        
+        if (select_result == 0) {
+            throw std::runtime_error("Timeout waiting for server response (5 seconds)");
+        }
+        
+        // Verify the FD is actually ready for reading
+        if (!FD_ISSET(fd, &read_fds)) {
+            throw std::runtime_error("select() returned but FD is not ready for reading");
+        }
+        
+        ssize_t bytes_read = check_syscall(read(resp_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1), "read");
+        
+        if (bytes_read == 0) {
             throw std::runtime_error("Server closed response pipe");
         }
         
@@ -441,8 +481,11 @@ public:
                     std::cout << "Sent quit command, exiting without waiting for response.\n";
                     break;
                 } else if (line == "abort2") {
-                    // Exit immediately without sending quit
+                    // Exit immediately without sending quit - terminate server
                     std::cout << "Exiting immediately without sending quit.\n";
+                    if (server_process.running()) {
+                        server_process.terminate();
+                    }
                     break;
                 } else {
                     // Send the command and display response
