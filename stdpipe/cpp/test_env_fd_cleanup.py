@@ -261,7 +261,7 @@ exec 21<{test_files[0]}
                 return False
             
             # Check that stdout/stderr (FDs 1,2) are present
-            # Note: FD 0 (stdin) may not show up in scan depending on process state
+            # Note: FD 0 (stdin) is intentionally closed by stdpipe_back using bp::std_in.close()
             expected_output_fds = {1, 2}
             if not expected_output_fds.issubset(set(fds)):
                 print(f"ERROR: stdout/stderr FDs {expected_output_fds} not found in {fds}")
