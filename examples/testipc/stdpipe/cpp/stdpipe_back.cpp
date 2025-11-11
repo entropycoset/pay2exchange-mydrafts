@@ -443,6 +443,7 @@ public:
                 throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
                                         " of " + std::to_string(formatted_command.length()) + " bytes written");
             }
+            std::cerr << "StdPipe...: written the command into pipe - done sending.\n";
             
             return bytes_written;
         });
@@ -465,7 +466,9 @@ public:
             timeout_val.tv_sec = max_timeout.count();
             timeout_val.tv_usec = 0;
             
+            std::cout<<"StdPipe...: Reading the reply...\n";
             int select_result = stdpipeutil::check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout_val), "select");
+            std::cout<<"StdPipe...: Reading the reply - done...\n";
             
             if (select_result == 0) {
                 throw std::runtime_error("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
@@ -490,6 +493,7 @@ public:
             
             buffer[bytes_read] = '\0';
             std::string raw_response = buffer;
+            std::cout<<"StdPipe...: Reading the reply...: received raw: [" << raw_response << "]\n";
             
             // Show raw received data
             std::cerr << colordetect::colorstr("StdPipeController: Received RAW: " + raw_response,
