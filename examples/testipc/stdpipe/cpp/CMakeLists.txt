@@ -6,6 +6,33 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# =====================================================
+# Prepare install-build dir section
+# =====================================================
+
+# Check for P2E_TOOLS_HOME environment variable
+set(P2E_TOOLS_HOME $ENV{P2E_TOOLS_HOME})
+set(P2E_ENV_WARNING FALSE)
+
+if(NOT P2E_TOOLS_HOME)
+    # Default to ~/p2e-tools if not set
+    set(P2E_TOOLS_HOME "$ENV{HOME}/p2e-tools")
+    set(P2E_ENV_WARNING TRUE)
+    message(WARNING "❌ P2E_TOOLS_HOME environment variable not set. Defaulting to: ${P2E_TOOLS_HOME}")
+endif()
+
+# Set the tools installation directory
+set(P2E_TOOLS_DIR "${P2E_TOOLS_HOME}/tools")
+
+# Create the tools directory if it doesn't exist
+file(MAKE_DIRECTORY "${P2E_TOOLS_DIR}")
+
+if(EXISTS "${P2E_TOOLS_DIR}")
+    message(STATUS "✅ Tools directory confirmed: ${P2E_TOOLS_DIR}")
+else()
+    message(FATAL_ERROR "❌ Failed to create tools directory: ${P2E_TOOLS_DIR}")
+endif()
+
 # Find Boost
 find_package(Boost REQUIRED COMPONENTS system filesystem iostreams program_options)
 
@@ -76,3 +103,59 @@ add_custom_target(test2
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running environment and FD cleanup tests (requires clean_exec, stdpipe_back, print_env_extra)"
 )
+
+# =====================================================
+# Post-build installation to tools directory
+# =====================================================
+
+# Copy executables to tools directory after building
+add_custom_command(TARGET stdpipe_back POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_back> "${P2E_TOOLS_DIR}/"
+    COMMENT "✅ Installing stdpipe_back to ${P2E_TOOLS_DIR}"
+)
+
+add_custom_command(TARGET stdpipe_serv POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_serv> "${P2E_TOOLS_DIR}/"
+    COMMENT "✅ Installing stdpipe_serv to ${P2E_TOOLS_DIR}"
+)
+
+add_custom_command(TARGET clean_exec POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:clean_exec> "${P2E_TOOLS_DIR}/"
+    COMMENT "✅ Installing clean_exec to ${P2E_TOOLS_DIR}"
+)
+
+add_custom_command(TARGET print_env_extra POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:print_env_extra> "${P2E_TOOLS_DIR}/"
+    COMMENT "✅ Installing print_env_extra to ${P2E_TOOLS_DIR}"
+)
+
+# =====================================================
+# After-build target for final warnings
+# =====================================================
+
+# Create after_build virtual target that runs after all builds
+add_custom_target(after_build ALL
+    DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra
+    COMMENT "✅ All executables built and installed"
+)
+
+# Show final warning if P2E_TOOLS_HOME was not set
+if(P2E_ENV_WARNING)
+    add_custom_command(TARGET after_build POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMAND ${CMAKE_COMMAND} -E echo "=================================================="
+        COMMAND ${CMAKE_COMMAND} -E echo "❌ WARNING: P2E_TOOLS_HOME not set in environment"
+        COMMAND ${CMAKE_COMMAND} -E echo "Using default: ${P2E_TOOLS_HOME}"
+        COMMAND ${CMAKE_COMMAND} -E echo "Consider setting P2E_TOOLS_HOME environment variable"
+        COMMAND ${CMAKE_COMMAND} -E echo "=================================================="
+        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMENT "Final warning about P2E_TOOLS_HOME"
+    )
+else()
+    add_custom_command(TARGET after_build POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMAND ${CMAKE_COMMAND} -E echo "✅ Build complete - all executables installed to ${P2E_TOOLS_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMENT "Build completion confirmation"
+    )
+endif()
