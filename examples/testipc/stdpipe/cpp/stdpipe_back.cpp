@@ -479,32 +479,25 @@ public:
                 throw std::runtime_error("select() returned but FD is not ready for reading");
             }
             
-            // First read the raw data to show what we received
-            char buffer[1024];
-            ssize_t bytes_read = stdpipeutil::check_syscall(read(fd, buffer, sizeof(buffer) - 1), "read");
+            // Create a proper stream from the file descriptor and let libcmdformat handle the reading
+            // This avoids buffer size limitations and handles v1lenend format correctly
+            boost::iostreams::file_descriptor_source fd_source(fd, boost::iostreams::never_close_handle);
+            boost::iostreams::stream<boost::iostreams::file_descriptor_source> fd_stream(fd_source);
             
-            if (bytes_read == 0) {
-                throw std::runtime_error("Server closed response pipe");
-            }
+            std::cout<<"StdPipe...: Reading the reply via stream...\n";
             
-            if (bytes_read < 0 || bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
-                throw std::runtime_error("Invalid bytes_read from read(): " + std::to_string(bytes_read));
-            }
+            // Let libcmdformat decode directly from the stream - this handles large responses correctly
+            std::string decoded_response = libcmdformat::decode_command(fd_stream, m_cmdformat);
             
-            buffer[bytes_read] = '\0';
-            std::string raw_response = buffer;
-            std::cout<<"StdPipe...: Reading the reply...: received raw: [" << raw_response << "]\n";
+            std::cout<<"StdPipe...: Successfully decoded response of length: " << decoded_response.length() << "\n";
             
-            // Show raw received data
-            std::cerr << colordetect::colorstr("StdPipeController: Received RAW: " + raw_response,
-                                              colordetect::Color::LightYellow, colordetect::Color::Black) << "\n";
-            
-            // Now decode the raw response using libcmdformat
-            std::istringstream raw_stream(raw_response);
-            std::string decoded_response = libcmdformat::decode_command(raw_stream, m_cmdformat);
+            // Show a truncated version of the response for debugging (first 200 chars)
+            std::string display_response = decoded_response.length() > 200
+                ? decoded_response.substr(0, 200) + "...[truncated]"
+                : decoded_response;
             
             // Bright white on black background for decoded responses
-            std::cerr << colordetect::colorstr("StdPipeController: Decoded response: " + decoded_response,
+            std::cerr << colordetect::colorstr("StdPipeController: Decoded response: " + display_response,
                                               colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
             return decoded_response;
         });
@@ -749,9 +742,15 @@ public:
 
             }
             
-            // Send quit command
-            std::string quit_response = send_command_and_read_reply("quit");
-            std::cerr << "✓ Demo completed, server response to quit: " << quit_response << std::endl;
+            // Send quit command - handle gracefully as cli_wallet may close pipe without formatted response
+            std::cerr << "StdPipeController: Sending quit command...\n";
+            try {
+                std::string quit_response = send_command_and_read_reply("quit");
+                std::cerr << "✓ Demo completed, server response to quit: " << quit_response << std::endl;
+            } catch (const std::exception& e) {
+                // cli_wallet often closes the pipe without sending a proper formatted response when quitting
+                std::cerr << "✓ Demo completed (quit response not received - wallet closed connection, which is expected)\n";
+            }
             
             // Display any final captured child output
             handle_child();
