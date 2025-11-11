@@ -14,11 +14,28 @@ function fatal() {
 	exit 1
 }
 
+function usage() {
+	echo "$0 gitrev"
+	echo "Build git revision with this hash"
+}
+
+
+if [ -z "${1+x}" ] ; then
+	usage
+	exit 1
+fi
+
 opt_rev="$1"
 opt_logfn="$PWD/log.txt"
 
+echo "Script will build for rev: $opt_rev"
+
 step "clear log" && rm -f "$opt_logfn"
 step "start log" && echo "New log $(date -u)" >> "$opt_logfn"
+
+if [ -z "$opt_rev" ] ; then
+	echo "No rev set." ; exit 1 ;
+fi
 
 function prog_info() {
 	fn="$1"
@@ -67,8 +84,8 @@ function build_normal() {
 	elapsed_str=$(printf "Elapsed time: %03d:%02d:%02d\n" $hh $mm $ss)
 
 	echo "*** FINISH: ($elapsed_str = $elapsed s) $build_summary" >> "$opt_logfn"
-	prog_info "programs/witness_node/witness_node" >> "$opt_logfn"
-	prog_info "programs/cli_wallet/cli_wallet" >> "$opt_logfn"
+	prog_info "use/programs/witness_node/witness_node" >> "$opt_logfn"
+	prog_info "use/programs/cli_wallet/cli_wallet" >> "$opt_logfn"
 	echo "----------------------------------------------------------" >> "$opt_logfn"
 	echo "" >> "$opt_logfn"
 }
