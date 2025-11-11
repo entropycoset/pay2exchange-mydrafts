@@ -450,10 +450,13 @@ public:
 
             this->terminals_node_any.push_back(term);
             enum { is_wit, is_usr, is_wallet, is_shell } role = is_shell;
+            enum { is_other, is_wallet_norm, is_wallet_rpc, is_wallet_master } role_sub = is_other; // sub-roles, e.g. wallet can be regular, or rpc-server
 
             if (countNodeUser < m_settings->m_count_user) role = is_usr;
             if (countNodeWitt < m_settings->m_count_witness) role = is_wit; // wit01 and such
-            if (countTerm == 1) role = is_wallet;
+            if (countTerm == 0) { role = is_wallet; role_sub=is_wallet_rpc; }
+            if (countTerm == 1) { role = is_wallet; role_sub=is_wallet_master; }
+            if (countTerm == 2) { role = is_wallet; role_sub=is_wallet_norm; }
 
             std::vector<std::string> args;
             std::string cmd;
@@ -540,12 +543,20 @@ public:
                 const std::string use_node_rpc_host = "127.0.0."s + std::to_string(free_ipend);
                 const int use_node_rpc_port = portrpc;
 
-                const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
-                const auto binary_cmd2 = "../../.."s + binary_cmd1;
-                cmd = "p2e-wallet" ; // out wrapper script
+                cmd = "p2e-wallet" ; // out wrapper script will wrap the commands
+                if ( (role_sub == is_wallet_norm) || (role_sub == is_wallet_rpc)) {
+                    const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
+                    const auto binary_cmd2 = "../../.."s + binary_cmd1;
+                    args.push_back("n"); // our wallet script: n for normal run
+                    args.push_back(binary_cmd2); // our wallet script: the wallet binary to run
+                    if (role_sub == is_wallet_norm) args.push_back("cli");
+                    else if (role_sub == is_wallet_rpc) args.push_back("srv_pipe");
+                    else error_gui("Invalud sub-role");
+                }
+                else if ( role_sub == is_wallet_master ) {
 
-                args.push_back("n"); // our wallet script: n for normal run
-                args.push_back(binary_cmd2); // our wallet script: the wallet binary to run
+                }
+
                 args.push_back("-userindex="s + std::to_string(countWallet));
                 args.push_back("-runsubdir="s + (world->run_id()));
 
@@ -786,7 +797,7 @@ TerminalWindowSettings::TerminalWindowSettings(int argc, char **argv) {
     m_count_user = cfg_nodes_user;
     m_count_all = m_count_witness + m_count_user;
 
-    m_panes_big = 2;
+    m_panes_big = 3;
     int grid_needs = m_count_all - 1; // -1 since one nodes go to big panel
     if (grid_needs<=1) { m_panes_grid_A=1;  m_panes_grid_B=1; }
     else if (grid_needs<=2) { m_panes_grid_A=1;  m_panes_grid_B=2; }

@@ -26,14 +26,19 @@ function help()
 	print [[
 p2e-wallet h		- this shows help and exits
 
-p2e-wallet n ../../program -e RUNOPT
+p2e-wallet n wallet_role ../../program
 	-userindex=x - a number 0..1000 to allow users to have separate sandbox directories despite heaving same role
 	-wait_node_port=port - wait for this port (and IP below) to work (tcp connection) before running this wallet
 	-wait_node_ip=ip
 	-runsubdir=XXX - will modify the sandbox directory path to use run/XXX/var-... instead of just run/var-...
 	- normal run of the wallet. all options after "-e" are passed on to the wallet
 	- as for other options needed for wallet, such as the node-RPC, the wallet-RPC ports, are passed simply after "-e"
+	-e RUNOPT
 
+wallet_role - can be:
+  "cli" - the cli wallet (possibly with rpc),
+  or can be: "srv_pipe" - the wallet serves access via pipe (mode of cli wallet possibly)
+  or can be: "master" - the program using pipe wallet (probably)
 ]]
 end
 
@@ -43,11 +48,19 @@ function main_start_wallet(given_arg)
 	given_arg = given_arg or {}
 
 	local cfg_mode = given_arg[1] or "normal"
+	local cfg_subrole = given_arg[2] or "cli" -- see help / wallet_role - for possible values
+	
+	local valid = {cli=1, srv_pipe=1, master=1}
+		if not valid[cfg_subrole] then
+		error("Unknown subrole [" .. cfg_subrole .. "] see usage")
+	end
+
 
 	p2e_env = load_p2e_env()
 	local cfg_walletprog = p2e_env["core_base"] .. "programs/cli_wallet/cli_wallet"
+	local cfg_masterprog = p2e_env["core_base"] .. "programs/cli_wallet/cli_wallet"	
 
-	local cfg_role="wallet"
+	local cfg_role="wallet" -- always is some wallet
 	local userindex=nil -- must be set by options
 
 	print("Wallet script: Mode of this script: " .. cfg_mode .. ".")
@@ -105,6 +118,7 @@ function main_start_wallet(given_arg)
 
 	-- Construct program arguments
 	local prog = cfg_walletprog
+	if cfg_subrole == "master" then prog = cfg_masterprog end
 	local execargs = {
 	}
 
@@ -135,7 +149,7 @@ function main_start_wallet(given_arg)
 		end
 	end
 
-	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program")
+	print("Current CWD=[" .. lfs.currentdir() .. "], and will now check the program prog=" .. prog)
 	if not file_is_executable(prog) then
 			io.stderr:write("ERROR: Required program '" .. prog .. "' not found or not executable (from cwd=".. lfs.currentdir() ..".\n")
 			os.exit(1)
@@ -172,7 +186,7 @@ function main_start_wallet(given_arg)
 	]])
 
 	print("Done.")
-	print("Was running with args:")
+	print("Was running program prog=" .. prog .. " with args:")
 	show_args_simple(execargs)
 
 	pause=false
