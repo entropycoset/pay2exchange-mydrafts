@@ -33,13 +33,13 @@ namespace envcleaner {
  */
 template<typename TResult, typename TFunc, typename TValidator, typename... TArgs>
 TResult validated_libc_call(TFunc func, TValidator validator, TArgs&&... args) {
-    errno = 0;
-    TResult result = func(std::forward<TArgs>(args)...);
-    if (!validator(result)) {
-        std::cerr << "Error: libc call failed with errno=" << errno << ": " << strerror(errno) << "\n";
-        throw std::runtime_error("libc call failed: " + std::string(strerror(errno)));
-    }
-    return result;
+		errno = 0;
+		TResult result = func(std::forward<TArgs>(args)...);
+		if (!validator(result)) {
+				std::cerr << "Error: libc call failed with errno=" << errno << ": " << strerror(errno) << "\n";
+				throw std::runtime_error("libc call failed: " + std::string(strerror(errno)));
+		}
+		return result;
 }
 
 /**
@@ -123,10 +123,10 @@ void set_environment(const std::vector<std::pair<std::string, std::string>>& env
 
 /**
  * @brief Count open file descriptors by scanning /proc/self/fd
- * 
+ *
  * This function scans /proc/self/fd directory and counts all open file descriptors,
  * excluding the FD used for scanning itself. It throws exceptions on any errors.
- * 
+ *
  * @return size_t Number of open file descriptors
  * @throws std::runtime_error on any scanning errors
  */
@@ -134,13 +134,13 @@ size_t count_open_fd();
 
 /**
  * @brief Close all file descriptors except those in the allowed list
- * 
+ *
  * This function:
  * 1. Deduplicates and sorts the allowed FDs vector
  * 2. Scans all open FDs and closes those not in the allowed list
  * 3. Verifies that the number of remaining FDs is <= size of allowed list
  * 4. Performs final verification that all remaining FDs are in allowed list
- * 
+ *
  * @param fd_allowed Vector of file descriptor numbers to keep open
  * @return size_t Number of file descriptors that were closed
  * @throws std::runtime_error on any errors during scanning or closing

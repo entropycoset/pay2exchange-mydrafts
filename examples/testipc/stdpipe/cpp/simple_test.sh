@@ -7,10 +7,10 @@ echo
 echo "=== Test 1: Direct mode (without cleanup_exec wrapper) ==="
 ./stdpipe_back ./stdpipe_serv
 if [ $? -eq 0 ]; then
-    echo "✓ Direct mode test PASSED"
+		echo "✓ Direct mode test PASSED"
 else
-    echo "✗ Direct mode test FAILED"
-    exit 1
+		echo "✗ Direct mode test FAILED"
+		exit 1
 fi
 echo
 
@@ -18,10 +18,10 @@ echo
 echo "=== Test 2: Wrapper mode (with cleanup_exec wrapper) ==="
 ./stdpipe_back ./stdpipe_serv ./clean_exec
 if [ $? -eq 0 ]; then
-    echo "✓ Wrapper mode test PASSED"
+		echo "✓ Wrapper mode test PASSED"
 else
-    echo "✗ Wrapper mode test FAILED"
-    exit 1
+		echo "✗ Wrapper mode test FAILED"
+		exit 1
 fi
 echo
 
