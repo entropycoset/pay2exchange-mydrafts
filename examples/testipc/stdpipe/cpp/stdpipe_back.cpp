@@ -25,10 +25,78 @@ T check_syscall(T result, const char* syscall_name) {
     return result;
 }
 
+// Helper functions for v1lenend command format
+namespace cmdformat_v1lenend {
+    const size_t max_cmd_len = 1024 * 1024; // 1MB max command length
+    
+    // Custom assert macro similar to FC_ASSERT
+    #define CMD_ASSERT(condition, message) \
+        do { \
+            if (!(condition)) { \
+                throw std::runtime_error(std::string("CMD_ASSERT failed: ") + (message)); \
+            } \
+        } while(0)
+    
+    // Encode string to v1lenend format: "length;command;END"
+    std::string encode_command(const std::string& command) {
+        return std::to_string(command.length()) + ";" + command + ";END";
+    }
+    
+    // Decode v1lenend format from input stream, returns the original command
+    template<typename InputStream>
+    std::string decode_command(InputStream& input) {
+        long long int cmd_len = -1;
+        input >> cmd_len;
+        
+        if (input.fail()) {
+            throw std::runtime_error("Reading cmd: failed to read command length");
+        }
+        if (cmd_len < 0) {
+            throw std::runtime_error("Reading cmd: invalid zero/neg len of command");
+        }
+        if (cmd_len > static_cast<long long int>(max_cmd_len)) {
+            throw std::runtime_error("Reading cmd: too long len of command");
+        }
+        
+        char sep1;
+        input >> sep1;
+        if (input.fail()) {
+            throw std::runtime_error("Reading cmd: failed to read separator");
+        }
+        if (sep1 != ';') {
+            throw std::runtime_error("Reading cmd: invalid separator sep1");
+        }
+        
+        std::string theline(static_cast<size_t>(cmd_len), '\0');
+        input.read(&theline[0], cmd_len);
+        std::streamsize bytesRead = input.gcount();
+        CMD_ASSERT(static_cast<long long int>(theline.size()) == bytesRead,
+                   "read (gcount?) has other size than the resulting data");
+        
+        {
+            const std::string exp_endmark = ";END";
+            std::string given_endmark(exp_endmark.size(), '\0');
+            input.read(&given_endmark[0], static_cast<std::streamsize>(exp_endmark.size()));
+            std::streamsize bytesRead_endmark = input.gcount();
+            CMD_ASSERT(static_cast<size_t>(bytesRead_endmark) == given_endmark.size(),
+                       "read (gcount?) failed when reading endmark after command");
+            CMD_ASSERT(given_endmark == exp_endmark,
+                       "invalid end-mark after the command");
+        }
+        
+        return theline;
+    }
+}
+
 enum class StdOutErrMode {
     OutErrModeHide,     // Redirect stdout/stderr to /dev/null
     OutErrModeCapture,  // Capture stdout/stderr via pipes
     OutErrModeDirect    // Current behavior - inherit parent's stdout/stderr
+};
+
+enum class CmdFormat {
+    cmdformat_raw,      // Send command as-is with newline (original behavior)
+    cmdformat_v1lenend  // Send length;command;END format
 };
 
 class my_fd {
@@ -117,6 +185,7 @@ private:
     my_pipe child_stderr_pipe; // For capturing child stderr (secure anonymous pipe)
     bp::child server_process; // The stdpipe_serv process
     StdOutErrMode m_stdouterr_mode;
+    CmdFormat m_cmdformat;
     std::string accumulated_stdout;
     std::string accumulated_stderr;
     
@@ -143,8 +212,15 @@ private:
     }
 
 public:
-    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect)
+    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect, const std::string& mode = "")
         : m_stdouterr_mode(stdouterr_mode) {
+        
+        // Set command format based on mode - defaults to raw for "test", v1lenend for others
+        if (mode == "test") {
+            m_cmdformat = CmdFormat::cmdformat_raw;
+        } else {
+            m_cmdformat = CmdFormat::cmdformat_v1lenend;
+        }
         if (server_path.empty()) {
             throw std::runtime_error("Server path cannot be empty");
         }
@@ -387,12 +463,20 @@ public:
                 throw std::runtime_error("select() returned but FD is not ready for writing");
             }
             
-            std::string cmd_with_newline = command + "\n";
-            ssize_t bytes_written = check_syscall(write(fd, cmd_with_newline.c_str(), cmd_with_newline.length()), "write");
+            std::string formatted_command;
+            if (m_cmdformat == CmdFormat::cmdformat_raw) {
+                // Original format: command + newline
+                formatted_command = command + "\n";
+            } else { // cmdformat_v1lenend
+                // New format: length;command;END
+                formatted_command = cmdformat_v1lenend::encode_command(command);
+            }
             
-            if (bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
+            ssize_t bytes_written = check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
+            
+            if (bytes_written != static_cast<ssize_t>(formatted_command.length())) {
                 throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
-                                        " of " + std::to_string(cmd_with_newline.length()) + " bytes written");
+                                        " of " + std::to_string(formatted_command.length()) + " bytes written");
             }
             
             return bytes_written;
@@ -771,7 +855,7 @@ int main(int argc, char* argv[]) {
         }
         
         // Create controller and dispatch based on mode
-        StdPipeController controller(server_path, cleanup_exec_prog, stdouterr_mode);
+        StdPipeController controller(server_path, cleanup_exec_prog, stdouterr_mode, mode);
         
         if (mode == "test") {
             controller.run_test();
