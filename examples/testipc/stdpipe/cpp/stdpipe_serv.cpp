@@ -14,6 +14,7 @@
 #include <cerrno>
 #include <boost/iostreams/device/file_descriptor.hpp>
 #include <boost/iostreams/stream.hpp>
+#include "libcmdformat/libcmdformat.hpp"
 
 namespace utils {
 
@@ -87,103 +88,109 @@ private:
     
     std::unique_ptr<fd_stream_in> cmd_in_file;   // command input pipe
     std::unique_ptr<fd_stream_out> cmd_out_file; // command output pipe
+    libcmdformat::CmdFormat cmd_format = libcmdformat::CmdFormat::cmdformat_v1lenend; // Use v1lenend format
 
 public:
     StdPipeServer(int cmd_in_fd, int cmd_out_fd) {
-        std::cerr << "Program starting - StdPipe Server initializing with FDs: "
-                  << cmd_in_fd << ", " << cmd_out_fd << "\n";
+        std::cerr << "\033[0mProgram starting - StdPipe Server initializing with FDs: "
+                  << cmd_in_fd << ", " << cmd_out_fd << "\033[0m\n";
 
         // Create boost::iostreams from native file descriptors
         try {
             cmd_in_file = std::make_unique<fd_stream_in>(cmd_in_fd, boost::iostreams::never_close_handle);
             if (!cmd_in_file->is_open()) {
-                std::cerr << "Error: Failed to open command input pipe (FD " << cmd_in_fd << ")\n";
+                std::cerr << "\033[0mError: Failed to open command input pipe (FD " << cmd_in_fd << ")\033[0m\n";
                 throw std::runtime_error("Failed to open command input pipe");
             }
 
             cmd_out_file = std::make_unique<fd_stream_out>(cmd_out_fd, boost::iostreams::never_close_handle);
             if (!cmd_out_file->is_open()) {
-                std::cerr << "Error: Failed to open command output pipe (FD " << cmd_out_fd << ")\n";
+                std::cerr << "\033[0mError: Failed to open command output pipe (FD " << cmd_out_fd << ")\033[0m\n";
                 throw std::runtime_error("Failed to open command output pipe");
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error creating boost::iostreams from FDs: " << e.what() << "\n";
+            std::cerr << "\033[0mError creating boost::iostreams from FDs: " << e.what() << "\033[0m\n";
             throw;
         }
 
-        std::cerr << "Program starting - StdPipe Server initialized successfully\n";
+        std::cerr << "\033[0mProgram starting - StdPipe Server initialized successfully\033[0m\n";
     }
 
     void send_reply(const std::string& reply) {
-        std::cerr << "Program sending reply: " << reply << "\n";
+        std::cerr << "\033[0mProgram sending reply: " << reply << "\033[0m\n";
         
-        (*cmd_out_file) << reply << "\n";
+        // Use libcmdformat to encode the reply
+        std::string formatted_reply = libcmdformat::encode_command(reply, cmd_format);
+        
+        cmd_out_file->write(formatted_reply.c_str(), formatted_reply.length());
         if (cmd_out_file->fail()) {
-            std::cerr << "Error: Failed to write reply to command output pipe\n";
+            std::cerr << "\033[0mError: Failed to write reply to command output pipe\033[0m\n";
             throw std::runtime_error("Failed to write to command output pipe");
         }
         cmd_out_file->flush();
     }
 
     void main_loop() {
-        std::string command;
-        
         while (true) {
-            std::cerr << "Program waiting for command...\n";
+            std::cerr << "\033[0mProgram waiting for command...\033[0m\n";
             
-            bool read_success = static_cast<bool>(std::getline(*cmd_in_file, command));
-            
-            if (!read_success) {
+            try {
+                // Use libcmdformat to decode the command
+                std::string command = libcmdformat::decode_command(*cmd_in_file, cmd_format);
+                
+                std::cerr << "\033[0mProgram getting a command: '" << command << "'\033[0m\n";
+                
+                if (command == "ping") {
+                    send_reply("pong");
+                } else if (command == "quit") {
+                    std::cerr << "\033[0mProgram received quit command - exiting loop\033[0m\n";
+                    send_reply("goodbye");
+                    break;
+                } else if (command.substr(0, 6) == "sleep ") {
+                    // Handle "sleep N" command where N is milliseconds
+                    try {
+                        std::string ms_str = command.substr(6);
+                        if (ms_str.empty()) {
+                            send_reply("sleep command requires milliseconds parameter");
+                            continue;
+                        }
+                        
+                        unsigned int milliseconds = utils::parse_strict_integer<unsigned int>(ms_str);
+                        
+                        // Limit maximum sleep to prevent abuse (10 seconds = 10000ms)
+                        if (milliseconds > 10000) {
+                            send_reply("sleep duration limited to 10000 milliseconds maximum");
+                            continue;
+                        }
+                        
+                        std::cerr << "\033[0mProgram sleeping for " << milliseconds << " milliseconds\033[0m\n";
+                        std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+                        std::cerr << "\033[0mProgram finished sleeping\033[0m\n";
+                        
+                        send_reply("slept " + std::to_string(milliseconds) + " ms");
+                    } catch (const std::exception& e) {
+                        std::cerr << "\033[0mError parsing sleep parameter: " << e.what() << "\033[0m\n";
+                        send_reply("invalid sleep parameter: " + std::string(e.what()));
+                    }
+                } else {
+                    std::cerr << "\033[0mUnknown command received: '" << command << "'\033[0m\n";
+                    send_reply("command unknown");
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "\033[0mError reading/decoding command: " << e.what() << "\033[0m\n";
+                // Check if it's EOF or a real error
                 if (cmd_in_file->eof()) {
-                    std::cerr << "Program detected end of input - exiting loop\n";
+                    std::cerr << "\033[0mProgram detected end of input - exiting loop\033[0m\n";
                     break;
                 } else {
-                    std::cerr << "Error: Failed to read from command input pipe\n";
-                    throw std::runtime_error("Failed to read from command input pipe");
+                    // For other errors, we might want to continue or exit depending on the error
+                    std::cerr << "\033[0mContinuing after command decode error...\033[0m\n";
+                    continue;
                 }
-            }
-            
-            std::cerr << "Program getting a command: '" << command << "'\n";
-            
-            if (command == "ping") {
-                send_reply("pong");
-            } else if (command == "quit") {
-                std::cerr << "Program received quit command - exiting loop\n";
-                send_reply("goodbye");
-                break;
-            } else if (command.substr(0, 6) == "sleep ") {
-                // Handle "sleep N" command where N is milliseconds
-                try {
-                    std::string ms_str = command.substr(6);
-                    if (ms_str.empty()) {
-                        send_reply("sleep command requires milliseconds parameter");
-                        continue;
-                    }
-                    
-                    unsigned int milliseconds = utils::parse_strict_integer<unsigned int>(ms_str);
-                    
-                    // Limit maximum sleep to prevent abuse (10 seconds = 10000ms)
-                    if (milliseconds > 10000) {
-                        send_reply("sleep duration limited to 10000 milliseconds maximum");
-                        continue;
-                    }
-                    
-                    std::cerr << "Program sleeping for " << milliseconds << " milliseconds\n";
-                    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-                    std::cerr << "Program finished sleeping\n";
-                    
-                    send_reply("slept " + std::to_string(milliseconds) + " ms");
-                } catch (const std::exception& e) {
-                    std::cerr << "Error parsing sleep parameter: " << e.what() << "\n";
-                    send_reply("invalid sleep parameter: " + std::string(e.what()));
-                }
-            } else {
-                std::cerr << "Unknown command received: '" << command << "'\n";
-                send_reply("command unknown");
             }
         }
         
-        std::cerr << "Program exiting main loop\n";
+        std::cerr << "\033[0mProgram exiting main loop\033[0m\n";
     }
 };
 
@@ -232,22 +239,22 @@ int main(int argc, char* argv[]) {
 
         int cmd_in_fd = utils::parse_strict_integer<int>(argvect.at(1));
         int cmd_out_fd = utils::parse_strict_integer<int>(argvect.at(2));
-        std::cerr << "Will talk CMD on: cmd-in fd " << cmd_in_fd << ", cmd-out fd " << cmd_out_fd << "\n";
+        std::cerr << "\033[0mWill talk CMD on: cmd-in fd " << cmd_in_fd << ", cmd-out fd " << cmd_out_fd << "\033[0m\n";
 
         if (cmd_in_fd < 0 || cmd_out_fd < 0) {
-            std::cerr << "Error: Invalid file descriptor numbers\n";
+            std::cerr << "\033[0mError: Invalid file descriptor numbers\033[0m\n";
             throw std::runtime_error("Invalid file descriptor numbers");
         }
 
         StdPipeServer server(cmd_in_fd, cmd_out_fd);
         server.main_loop();
-        std::cout << "Program exiting normally\n";
+        std::cout << "\033[0mProgram exiting normally\033[0m\n";
         return 0;
     } catch (const std::exception& e) {
-        std::cerr << "Exception caught: " << e.what() << "\n";
+        std::cerr << "\033[0mException caught: " << e.what() << "\033[0m\n";
         return 1;
     } catch (...) {
-        std::cerr << "Unknown exception caught\n";
+        std::cerr << "\033[0mUnknown exception caught\033[0m\n";
         return 2;
     }
 }

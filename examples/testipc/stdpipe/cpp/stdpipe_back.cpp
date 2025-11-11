@@ -12,7 +12,10 @@
 #include <errno.h>
 #include <cstring>
 #include <boost/process.hpp>
+#include <boost/iostreams/device/file_descriptor.hpp>
+#include <boost/iostreams/stream.hpp>
 #include "libvalidcolor/libvalidcolor.hpp"
+#include "libcmdformat/libcmdformat.hpp"
 
 namespace bp = boost::process;
 
@@ -25,79 +28,14 @@ T check_syscall(T result, const char* syscall_name) {
     return result;
 }
 
-// Helper functions for v1lenend command format
-namespace cmdformat_v1lenend {
-    const size_t max_cmd_len = 1024 * 1024; // 1MB max command length
-    
-    // Custom assert macro similar to FC_ASSERT
-    #define CMD_ASSERT(condition, message) \
-        do { \
-            if (!(condition)) { \
-                throw std::runtime_error(std::string("CMD_ASSERT failed: ") + (message)); \
-            } \
-        } while(0)
-    
-    // Encode string to v1lenend format: "length;command;END"
-    std::string encode_command(const std::string& command) {
-        return std::to_string(command.length()) + ";" + command + ";END";
-    }
-    
-    // Decode v1lenend format from input stream, returns the original command
-    template<typename InputStream>
-    std::string decode_command(InputStream& input) {
-        long long int cmd_len = -1;
-        input >> cmd_len;
-        
-        if (input.fail()) {
-            throw std::runtime_error("Reading cmd: failed to read command length");
-        }
-        if (cmd_len < 0) {
-            throw std::runtime_error("Reading cmd: invalid zero/neg len of command");
-        }
-        if (cmd_len > static_cast<long long int>(max_cmd_len)) {
-            throw std::runtime_error("Reading cmd: too long len of command");
-        }
-        
-        char sep1;
-        input >> sep1;
-        if (input.fail()) {
-            throw std::runtime_error("Reading cmd: failed to read separator");
-        }
-        if (sep1 != ';') {
-            throw std::runtime_error("Reading cmd: invalid separator sep1");
-        }
-        
-        std::string theline(static_cast<size_t>(cmd_len), '\0');
-        input.read(&theline[0], cmd_len);
-        std::streamsize bytesRead = input.gcount();
-        CMD_ASSERT(static_cast<long long int>(theline.size()) == bytesRead,
-                   "read (gcount?) has other size than the resulting data");
-        
-        {
-            const std::string exp_endmark = ";END";
-            std::string given_endmark(exp_endmark.size(), '\0');
-            input.read(&given_endmark[0], static_cast<std::streamsize>(exp_endmark.size()));
-            std::streamsize bytesRead_endmark = input.gcount();
-            CMD_ASSERT(static_cast<size_t>(bytesRead_endmark) == given_endmark.size(),
-                       "read (gcount?) failed when reading endmark after command");
-            CMD_ASSERT(given_endmark == exp_endmark,
-                       "invalid end-mark after the command");
-        }
-        
-        return theline;
-    }
-}
-
 enum class StdOutErrMode {
     OutErrModeHide,     // Redirect stdout/stderr to /dev/null
     OutErrModeCapture,  // Capture stdout/stderr via pipes
     OutErrModeDirect    // Current behavior - inherit parent's stdout/stderr
 };
 
-enum class CmdFormat {
-    cmdformat_raw,      // Send command as-is with newline (original behavior)
-    cmdformat_v1lenend  // Send length;command;END format
-};
+// Use libcmdformat's CmdFormat enum
+using libcmdformat::CmdFormat;
 
 class my_fd {
 private:
@@ -185,7 +123,7 @@ private:
     my_pipe child_stderr_pipe; // For capturing child stderr (secure anonymous pipe)
     bp::child server_process; // The stdpipe_serv process
     StdOutErrMode m_stdouterr_mode;
-    CmdFormat m_cmdformat;
+    CmdFormat m_cmdformat = CmdFormat::cmdformat_v1lenend; // Always use v1lenend format
     std::string accumulated_stdout;
     std::string accumulated_stderr;
     
@@ -215,12 +153,8 @@ public:
     StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect, const std::string& mode = "")
         : m_stdouterr_mode(stdouterr_mode) {
         
-        // Set command format based on mode - defaults to raw for "test", v1lenend for others
-        if (mode == "test") {
-            m_cmdformat = CmdFormat::cmdformat_raw;
-        } else {
-            m_cmdformat = CmdFormat::cmdformat_v1lenend;
-        }
+        // Always use v1lenend format now that both client and server support it
+        m_cmdformat = CmdFormat::cmdformat_v1lenend;
         if (server_path.empty()) {
             throw std::runtime_error("Server path cannot be empty");
         }
@@ -463,14 +397,8 @@ public:
                 throw std::runtime_error("select() returned but FD is not ready for writing");
             }
             
-            std::string formatted_command;
-            if (m_cmdformat == CmdFormat::cmdformat_raw) {
-                // Original format: command + newline
-                formatted_command = command + "\n";
-            } else { // cmdformat_v1lenend
-                // New format: length;command;END
-                formatted_command = cmdformat_v1lenend::encode_command(command);
-            }
+            // Use libcmdformat to encode the command
+            std::string formatted_command = libcmdformat::encode_command(command, m_cmdformat);
             
             ssize_t bytes_written = check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
             
@@ -485,9 +413,6 @@ public:
 
     std::string read_response() {
         return timed_pipe_operation("reading reply", [&]() -> std::string {
-            std::string response;
-            char buffer[1024];
-            
             // Add timeout using select() with proper error handling
             fd_set read_fds;
             FD_ZERO(&read_fds);
@@ -514,28 +439,12 @@ public:
                 throw std::runtime_error("select() returned but FD is not ready for reading");
             }
             
-            ssize_t bytes_read = check_syscall(read(fd, buffer, sizeof(buffer) - 1), "read");
+            // Create a file descriptor stream for libcmdformat to read from
+            boost::iostreams::file_descriptor_source fd_source(fd, boost::iostreams::never_close_handle);
+            boost::iostreams::stream<boost::iostreams::file_descriptor_source> input_stream(fd_source);
             
-            if (bytes_read == 0) {
-                throw std::runtime_error("Server closed response pipe");
-            }
-            
-            // Ensure bounds safety: Check negative first to avoid wraparound, then check upper bound
-            if (bytes_read < 0) {
-                throw std::runtime_error("Negative bytes_read from read(): " + std::to_string(bytes_read));
-            }
-            if (bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
-                throw std::runtime_error("bytes_read exceeds buffer size: " + std::to_string(bytes_read) +
-                                        " >= " + std::to_string(sizeof(buffer)));
-            }
-            
-            buffer[bytes_read] = '\0';
-            response = buffer;
-            
-            // Remove trailing newline if present
-            if (!response.empty() && response.back() == '\n') {
-                response.pop_back();
-            }
+            // Use libcmdformat to decode the response
+            std::string response = libcmdformat::decode_command(input_stream, m_cmdformat);
             
             // Bright white on black background for responses we receive
             std::cerr << colordetect::colorstr("StdPipeController: Received response: " + response,

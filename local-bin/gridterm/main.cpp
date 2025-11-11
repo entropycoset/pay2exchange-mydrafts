@@ -223,8 +223,13 @@ struct FontSettings {
         }
         
         // Try to find a good terminal font
-        QStringList preferredTerminalFonts = {"Terminus", "DejaVu Sans Mono", "Liberation Mono",
-                                              "Consolas", "Monaco", "Courier New", "monospace"};
+        QStringList preferredTerminalFonts = {
+            "DejaVu Sans Mono", "Ubuntu Mono", "Terminus",
+            "Consolas", "Monaco", "Liberation Mono",
+            "Fira Code", "Hack", "JetBrains Mono", "Cascadia Code", "Source Code Pro", "Inconsolata",
+            "IBM Plex Mono",
+            "Courier New", "monospace"
+        };
         
         QString selectedFont = "monospace"; // fallback
         QStringList availableFonts = QFontDatabase::families();
@@ -956,13 +961,28 @@ public slots:
     }
 
     void selectGuiFontAll() {
-        bool ok;
-        // Fix font dialog issue by ensuring the font has proper style set
-        QFont currentFont = fontSettings.guiFont;
-        currentFont.setStyleHint(QFont::AnyStyle);
-        currentFont.setStyle(QFont::StyleNormal);
+        // Ask user about font filtering
+        int choice = QMessageBox::question(this, "Font Selection",
+                                          "Show all fonts installed?\n(Or else: show the good/recommended fonts only)",
+                                          QMessageBox::Yes | QMessageBox::No,
+                                          QMessageBox::No);
         
-        QFont selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select GUI Font");
+        QFont selectedFont;
+        bool ok = false;
+        
+        if (choice == QMessageBox::Yes) {
+            // Show all fonts using standard dialog
+            QFont currentFont = fontSettings.guiFont;
+            currentFont.setStyleHint(QFont::AnyStyle);
+            currentFont.setStyle(QFont::StyleNormal);
+            selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select GUI Font");
+        } else {
+            // Show recommended fonts only
+            selectedFont = selectFromRecommendedFonts(fontSettings.guiFont, "GUI Font Selection", false);
+            ok = selectedFont.family() != fontSettings.guiFont.family() ||
+                 selectedFont.pointSize() != fontSettings.guiFont.pointSize();
+        }
+        
         if (ok) {
             if (FontSettings::validateFontSize(selectedFont.pointSize(), this)) {
                 fontSettings.guiFont = selectedFont;
@@ -993,13 +1013,28 @@ public slots:
     }
 
     void selectTerminalFontAll() {
-        bool ok;
-        // Fix font dialog issue by ensuring the font has proper style set
-        QFont currentFont = fontSettings.terminalFont;
-        currentFont.setStyleHint(QFont::Monospace);
-        currentFont.setStyle(QFont::StyleNormal);
+        // Ask user about font filtering
+        int choice = QMessageBox::question(this, "Font Selection",
+                                          "Show all fonts installed?\n(Or else: show the good/recommended fonts only)",
+                                          QMessageBox::Yes | QMessageBox::No,
+                                          QMessageBox::No);
         
-        QFont selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select Terminal Font");
+        QFont selectedFont;
+        bool ok = false;
+        
+        if (choice == QMessageBox::Yes) {
+            // Show all fonts using standard dialog
+            QFont currentFont = fontSettings.terminalFont;
+            currentFont.setStyleHint(QFont::Monospace);
+            currentFont.setStyle(QFont::StyleNormal);
+            selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select Terminal Font");
+        } else {
+            // Show recommended fonts only
+            selectedFont = selectFromRecommendedFonts(fontSettings.terminalFont, "Terminal Font Selection", true);
+            ok = selectedFont.family() != fontSettings.terminalFont.family() ||
+                 selectedFont.pointSize() != fontSettings.terminalFont.pointSize();
+        }
+        
         if (ok) {
             if (FontSettings::validateFontSize(selectedFont.pointSize(), this)) {
                 fontSettings.terminalFont = selectedFont;
@@ -1013,6 +1048,51 @@ public slots:
     }
 
 private:
+    QFont selectFromRecommendedFonts(const QFont& currentFont, const QString& title, bool isTerminalFont) {
+        // Define recommended fonts
+        QStringList recommendedFonts;
+        if (isTerminalFont) {
+            recommendedFonts = {"Terminus", "DejaVu Sans Mono", "Liberation Mono",
+                               "Consolas", "Monaco", "Courier New", "monospace"};
+        } else {
+            recommendedFonts = {"DejaVu Sans", "Liberation Sans", "Arial", "Helvetica",
+                               "Verdana", "Tahoma", "Ubuntu", "sans-serif"};
+        }
+        
+        // Filter to only available fonts
+        QStringList availableFonts = QFontDatabase::families();
+        QStringList filteredFonts;
+        for (const QString& font : recommendedFonts) {
+            if (availableFonts.contains(font)) {
+                filteredFonts.append(font);
+            }
+        }
+        
+        if (filteredFonts.isEmpty()) {
+            filteredFonts.append("sans-serif"); // fallback
+        }
+        
+        // Show font selection dialog
+        bool ok;
+        QString selectedFamily = QInputDialog::getItem(this, title,
+                                                      "Select font family:", filteredFonts,
+                                                      filteredFonts.indexOf(currentFont.family()),
+                                                      false, &ok);
+        if (!ok) {
+            return currentFont; // user cancelled
+        }
+        
+        // Get font size
+        int selectedSize = QInputDialog::getInt(this, title, "Enter font size:",
+                                               currentFont.pointSize(), 1, 1000, 1, &ok);
+        if (!ok) {
+            return currentFont; // user cancelled
+        }
+        
+        QFont newFont(selectedFamily, selectedSize);
+        return newFont;
+    }
+
     void applyTerminalFont() {
         // We need to access the terminals through the simulation panel
         if (simulationPanel) {
