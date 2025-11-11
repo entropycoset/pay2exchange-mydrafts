@@ -6,9 +6,16 @@ indent_size = 2
 trim_trailing_whitespace = false
 insert_final_newline = false
 
-[*.{c,cpp,h,hpp}]
+[{CMakeLists.txt,*.{c,cpp,h,hpp,py,s}}]
 indent_style = tab
 indent_size = 2
 trim_trailing_whitespace = true
 insert_final_newline = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
 
