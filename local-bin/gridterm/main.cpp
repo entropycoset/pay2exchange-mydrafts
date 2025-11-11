@@ -545,17 +545,23 @@ public:
 
                 cmd = "p2e-wallet" ; // out wrapper script will wrap the commands
                 if ( (role_sub == is_wallet_norm) || (role_sub == is_wallet_rpc)) {
-                    const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
-                    const auto binary_cmd2 = "../../.."s + binary_cmd1;
+                    //const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
+                    //const auto binary_cmd2 = "../../.."s + binary_cmd1;
                     args.push_back("n"); // our wallet script: n for normal run
-                    args.push_back(binary_cmd2); // our wallet script: the wallet binary to run
                     if (role_sub == is_wallet_norm) args.push_back("cli");
                     else if (role_sub == is_wallet_rpc) args.push_back("srv_pipe");
-                    else error_gui("Invalud sub-role");
+                    else throw std::runtime_error("Invalud sub-role (of wallet norm/rpc)");
+                    args.push_back("unused_binary_name"); // not used - hard coded now in p2e-dev-node1 wrapper?
                 }
                 else if ( role_sub == is_wallet_master ) {
-
+                    //const auto binary_cmd1 = "./programs/cli_wallet/cli_wallet";
+                    //const auto binary_cmd2 = "../../.."s + binary_cmd1;
+                    args.push_back("n"); // our wallet script: n for normal run
+                    if (role_sub == is_wallet_master) args.push_back("master");
+                    else throw std::runtime_error("Invalud sub-role (of wallet master)");
+                    args.push_back("unused_binary_name"); // not used - hard coded now in p2e-dev-node1 wrapper?
                 }
+                else throw std::runtime_error("Invalid sub-role (of wallet)");
 
                 args.push_back("-userindex="s + std::to_string(countWallet));
                 args.push_back("-runsubdir="s + (world->run_id()));
