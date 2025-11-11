@@ -55,7 +55,7 @@ add_custom_target(run
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh
     DEPENDS build_all safe_exec stdpipe_back stdpipe_serv
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running test script (requires safe_exec, stdpipe_back, stdpipe_serv)"
+    COMMENT "Running test script (requires cleanup_exec, stdpipe_back, stdpipe_serv)"
 )
 
 # Copy test automation script to build directory
@@ -74,5 +74,5 @@ add_custom_target(test2
     COMMAND python3 ${CMAKE_CURRENT_BINARY_DIR}/test_env_fd_cleanup.py
     DEPENDS build_all safe_exec stdpipe_back print_env_extra
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running environment and FD cleanup tests (requires safe_exec, stdpipe_back, print_env_extra)"
+    COMMENT "Running environment and FD cleanup tests (requires cleanup_exec, stdpipe_back, print_env_extra)"
 )

@@ -93,10 +93,10 @@ private:
     bp::child server_process; // The stdpipe_serv process
 
 public:
-    StdPipeController(const std::string& server_path, const std::string& safeexec_prog = "") {
+    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "") {
         std::cerr << "StdPipeController: Starting server process: " << server_path << "\n";
-        if (!safeexec_prog.empty()) {
-            std::cerr << "StdPipeController: Using safeexec: " << safeexec_prog << "\n";
+        if (!cleanup_exec_prog.empty()) {
+            std::cerr << "StdPipeController: Using cleanup_exec: " << cleanup_exec_prog << "\n";
         }
         
         try {
@@ -113,8 +113,8 @@ public:
             
             std::cerr << "StdPipeController: Will pass FDs " << cmd_fd_str << " and " << resp_fd_str << " to child process\n";
             
-            // Start the server process - either directly or via safeexec
-            if (safeexec_prog.empty()) {
+            // Start the server process - either directly or via cleanup_exec
+            if (cleanup_exec_prog.empty()) {
                 // Direct execution (original behavior)
                 server_process = bp::child(
                     server_path,
@@ -123,15 +123,15 @@ public:
                     bp::std_in.close()
                 );
             } else {
-                // Execute via safeexec with cleanup options
+                // Execute via cleanup_exec with cleanup options
                 std::string clean_fd_except = "0,1,2," + cmd_fd_str + "," + resp_fd_str;
                 std::string clean_env_except = "HOME,USER";
                 
-                std::cerr << "StdPipeController: Running via safeexec with clean-fd-except=" << clean_fd_except
+                std::cerr << "StdPipeController: Running via cleanup_exec with clean-fd-except=" << clean_fd_except
                           << " and clean-env-except=" << clean_env_except << "\n";
                 
                 server_process = bp::child(
-                    safeexec_prog,
+                    cleanup_exec_prog,
                     "--run",
                     "--clean-fd-except", clean_fd_except,
                     "--clean-env-except", clean_env_except,
@@ -262,9 +262,9 @@ public:
 /**
  * StdPipe Backend Controller
  *
- * Usage: ./stdpipe_back [server_path] [safeexec_prog]
+ * Usage: ./stdpipe_back [server_path] [cleanup_exec_prog]
  *
- * When safeexec_prog is provided, the program executes:
+ * When cleanup_exec_prog is provided, the program executes:
  * ./safe_exec --run --clean-fd-except 0,1,2,<cmd_fd>,<resp_fd> --clean-env-except HOME,USER ./stdpipe_serv <cmd_fd> <resp_fd>
  *
  * This ensures:
@@ -291,13 +291,13 @@ int main(int argc, char* argv[]) {
             server_path = argvect.at(1);
         }
         
-        // Get safeexec_prog argument (defaults to empty string)
-        std::string safeexec_prog = "";
+        // Get cleanup_exec_prog argument (defaults to empty string)
+        std::string cleanup_exec_prog = "";
         if (argvect.size() > 2) {
-            safeexec_prog = argvect.at(2);
+            cleanup_exec_prog = argvect.at(2);
         }
         
-        StdPipeController controller(server_path, safeexec_prog);
+        StdPipeController controller(server_path, cleanup_exec_prog);
         controller.run_test();
         
         std::cerr << "StdPipe Backend Controller completed successfully\n";

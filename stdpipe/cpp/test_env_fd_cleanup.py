@@ -56,7 +56,7 @@ def test_fd_cleanup():
             test_files.append(tf.name)
             tf.close()
         
-        # Create a script that opens extra FDs and then calls safe_exec
+        # Create a script that opens extra FDs and then calls cleanup_exec
         test_script = """#!/bin/bash
 set -e
 
@@ -66,7 +66,7 @@ exec 11</dev/zero
 exec 12<{test_file0}
 exec 13<{test_file1}
 
-# Call safe_exec with FD cleanup - keep only 0,1,2
+# Call cleanup_exec with FD cleanup - keep only 0,1,2
 ./safe_exec --run --clean-fd-except "0,1,2" ./print_env_extra
 """.format(test_file0=test_files[0], test_file1=test_files[1])
         
@@ -119,7 +119,7 @@ def test_env_cleanup():
     """Test environment variable cleanup functionality"""
     print("\n=== Testing Environment Cleanup ===")
     
-    # Set some test environment variables and call safe_exec with env cleanup
+    # Set some test environment variables and call cleanup_exec with env cleanup
     test_env = os.environ.copy()
     test_env.update({
         'TEST_VAR_1': 'value1',
@@ -182,8 +182,8 @@ def test_env_cleanup():
     print("✓ Environment cleanup test passed")
     return True
 def test_stdpipe_back_wrapper_mode():
-    """Test stdpipe_back using safe_exec wrapper with print_env_extra"""
-    print("\n=== Testing stdpipe_back with safe_exec wrapper ===")
+    """Test stdpipe_back using cleanup_exec wrapper with print_env_extra"""
+    print("\n=== Testing stdpipe_back with cleanup_exec wrapper ===")
     
     # Create a modified print_env_extra wrapper that ignores FD arguments
     # since stdpipe_back passes FD numbers as arguments
@@ -223,7 +223,7 @@ set -e
 exec 20</dev/null
 exec 21<{test_files[0]}
 
-# Run stdpipe_back with safe_exec wrapper, using our print_env wrapper instead of stdpipe_serv
+# Run stdpipe_back with cleanup_exec wrapper, using our print_env wrapper instead of stdpipe_serv
 ./stdpipe_back ./{script_path} ./safe_exec
 """
             
@@ -330,7 +330,7 @@ def main():
     
     if tests_passed == total_tests:
         print("🎉 All tests passed!")
-        print("Both modes of _back program tested: with wrapper and without wrapper.")
+        print("Both modes of _back program tested: with cleanup_exec wrapper and without wrapper.")
         return 0
     else:
         print("❌ Some tests failed!")
