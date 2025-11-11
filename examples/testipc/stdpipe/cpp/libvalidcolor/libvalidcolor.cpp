@@ -1,4 +1,4 @@
-#include "colordetect.h"
+#include "libvalidcolor.hpp"
 #include <curses.h>
 #include <term.h>
 #include <unistd.h>
@@ -104,6 +104,16 @@ std::string colortxt(const std::string& txt, int fg, int bg) {
     if (!has) return txt;
 
     return "\033[" + seq.str() + "m" + txt + "\033[39;49m";
+}
+
+std::string colortxt(const std::string& txt, Color fg, Color bg) {
+    int fg_val = (fg == Color::Default || fg == Color::Reset || fg == Color::Normal) ? -1 : static_cast<int>(fg);
+    int bg_val = (bg == Color::Default || bg == Color::Reset || bg == Color::Normal) ? -1 : static_cast<int>(bg);
+    return colortxt(txt, fg_val, bg_val);
+}
+
+std::string colorstr(const std::string& txt, Color fg, Color bg) {
+    return colortxt(txt, fg, bg);
 }
 
 State get_state() {

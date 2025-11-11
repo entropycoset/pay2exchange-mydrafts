@@ -3,13 +3,21 @@
 #include <stdexcept>
 #include <thread>
 #include <chrono>
+#include <fstream>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <boost/process.hpp>
+#include "libvalidcolor/libvalidcolor.hpp"
 
 namespace bp = boost::process;
+
+enum class StdOutErrMode {
+    OutErrModeHide,     // Redirect stdout/stderr to /dev/null
+    OutErrModeCapture,  // Capture stdout/stderr via pipes
+    OutErrModeDirect    // Current behavior - inherit parent's stdout/stderr
+};
 
 class my_fd {
 private:
@@ -90,10 +98,16 @@ class StdPipeController {
 private:
     my_pipe cmd_pipe;         // Command pipe (parent writes, child reads)
     my_pipe resp_pipe;        // Response pipe (child writes, parent reads)
+    my_pipe child_stdout_pipe; // For capturing child stdout (secure anonymous pipe)
+    my_pipe child_stderr_pipe; // For capturing child stderr (secure anonymous pipe)
     bp::child server_process; // The stdpipe_serv process
+    StdOutErrMode m_stdouterr_mode;
+    std::string accumulated_stdout;
+    std::string accumulated_stderr;
 
 public:
-    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "") {
+    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect)
+        : m_stdouterr_mode(stdouterr_mode) {
         if (server_path.empty()) {
             throw std::runtime_error("Server path cannot be empty");
         }
@@ -110,6 +124,21 @@ public:
             cmd_pipe.spawn();
             resp_pipe.spawn();
             
+            // Create stdout/stderr capture pipes if needed
+            if (m_stdouterr_mode == StdOutErrMode::OutErrModeCapture) {
+                child_stdout_pipe.spawn();
+                child_stderr_pipe.spawn();
+                
+                // Set non-blocking mode on read ends
+                int flags = fcntl(child_stdout_pipe.side_read().get_fd(), F_GETFL, 0);
+                fcntl(child_stdout_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK);
+                
+                flags = fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0);
+                fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK);
+                
+                std::cerr << "StdPipeController: Created secure anonymous pipes for stdout/stderr capture\n";
+            }
+            
             std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.side_read().get_fd() << "," << cmd_pipe.side_write().get_fd()
                       << "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]\n";
             
@@ -119,38 +148,138 @@ public:
             
             std::cerr << "StdPipeController: Will pass FDs " << cmd_fd_str << " and " << resp_fd_str << " to child process\n";
             
-            // Start the server process - either directly or via cleanup_exec
+            // Start the server process - setup redirection based on stdouterr mode
             if (cleanup_exec_prog.empty()) {
-                // Direct execution (original behavior)
-                server_process = bp::child(
-                    server_path,
-                    cmd_fd_str,
-                    resp_fd_str,
-                    bp::std_in.close()
-                );
+                // Direct execution
+                switch (m_stdouterr_mode) {
+                    case StdOutErrMode::OutErrModeHide:
+                        server_process = bp::child(
+                            server_path,
+                            cmd_fd_str,
+                            resp_fd_str,
+                            bp::std_in.close(),
+                            bp::std_out > "/dev/null",
+                            bp::std_err > "/dev/null"
+                        );
+                        break;
+                    case StdOutErrMode::OutErrModeCapture: {
+                        // Use manual fork/exec approach for precise control
+                        pid_t pid = fork();
+                        if (pid == 0) {
+                            // Child process
+                            dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO);
+                            dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO);
+                            dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str()));
+                            dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str()));
+                            
+                            // Close all our pipe ends in child
+                            cmd_pipe.side_write().close();
+                            resp_pipe.side_read().close();
+                            child_stdout_pipe.side_read().close();
+                            child_stderr_pipe.side_read().close();
+                            
+                            execl(server_path.c_str(), server_path.c_str(), cmd_fd_str.c_str(), resp_fd_str.c_str(), (char*)nullptr);
+                            exit(1); // If execl fails
+                        } else if (pid > 0) {
+                            // Parent process - wrap pid in boost::process child
+                            server_process = bp::child(pid);
+                        } else {
+                            throw std::runtime_error("Failed to fork child process");
+                        }
+                        break;
+                    }
+                    case StdOutErrMode::OutErrModeDirect:
+                    default:
+                        server_process = bp::child(
+                            server_path,
+                            cmd_fd_str,
+                            resp_fd_str,
+                            bp::std_in.close()
+                        );
+                        break;
+                }
             } else {
                 // Execute via cleanup_exec with cleanup options
                 std::string clean_fd_except = "0,1,2," + cmd_fd_str + "," + resp_fd_str;
+                if (m_stdouterr_mode == StdOutErrMode::OutErrModeCapture) {
+                    clean_fd_except += "," + std::to_string(child_stdout_pipe.side_write().get_fd()) +
+                                       "," + std::to_string(child_stderr_pipe.side_write().get_fd());
+                }
                 std::string clean_env_except = "HOME,USER";
                 
                 std::cerr << "StdPipeController: Running via cleanup_exec with clean-fd-except=" << clean_fd_except
                           << " and clean-env-except=" << clean_env_except << "\n";
                 
-                server_process = bp::child(
-                    cleanup_exec_prog,
-                    "--run",
-                    "--clean-fd-except", clean_fd_except,
-                    "--clean-env-except", clean_env_except,
-                    server_path,
-                    cmd_fd_str,
-                    resp_fd_str,
-                    bp::std_in.close()
-                );
+                switch (m_stdouterr_mode) {
+                    case StdOutErrMode::OutErrModeHide:
+                        server_process = bp::child(
+                            cleanup_exec_prog,
+                            "--run",
+                            "--clean-fd-except", clean_fd_except,
+                            "--clean-env-except", clean_env_except,
+                            server_path,
+                            cmd_fd_str,
+                            resp_fd_str,
+                            bp::std_in.close(),
+                            bp::std_out > "/dev/null",
+                            bp::std_err > "/dev/null"
+                        );
+                        break;
+                    case StdOutErrMode::OutErrModeCapture: {
+                        // For cleanup_exec path, use manual fork/exec as well
+                        pid_t pid = fork();
+                        if (pid == 0) {
+                            // Child process
+                            dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO);
+                            dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO);
+                            dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str()));
+                            dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str()));
+                            
+                            // Close all our pipe ends in child
+                            cmd_pipe.side_write().close();
+                            resp_pipe.side_read().close();
+                            child_stdout_pipe.side_read().close();
+                            child_stderr_pipe.side_read().close();
+                            
+                            execl(cleanup_exec_prog.c_str(), cleanup_exec_prog.c_str(),
+                                  "--run", "--clean-fd-except", clean_fd_except.c_str(),
+                                  "--clean-env-except", clean_env_except.c_str(),
+                                  server_path.c_str(), cmd_fd_str.c_str(), resp_fd_str.c_str(),
+                                  (char*)nullptr);
+                            exit(1); // If execl fails
+                        } else if (pid > 0) {
+                            // Parent process - wrap pid in boost::process child
+                            server_process = bp::child(pid);
+                        } else {
+                            throw std::runtime_error("Failed to fork child process");
+                        }
+                        break;
+                    }
+                    case StdOutErrMode::OutErrModeDirect:
+                    default:
+                        server_process = bp::child(
+                            cleanup_exec_prog,
+                            "--run",
+                            "--clean-fd-except", clean_fd_except,
+                            "--clean-env-except", clean_env_except,
+                            server_path,
+                            cmd_fd_str,
+                            resp_fd_str,
+                            bp::std_in.close()
+                        );
+                        break;
+                }
             }
             
             // Close the child's ends in parent
             cmd_pipe.side_read().close();   // Child uses this for reading
             resp_pipe.side_write().close(); // Child uses this for writing
+            
+            // Close write ends of capture pipes in parent (child writes to them)
+            if (m_stdouterr_mode == StdOutErrMode::OutErrModeCapture) {
+                child_stdout_pipe.side_write().close();
+                child_stderr_pipe.side_write().close();
+            }
             
             std::cerr << "StdPipeController: Created anonymous pipes - cmd input FD " << cmd_fd_str
                       << ", response output FD " << resp_fd_str << "\n";
@@ -180,7 +309,10 @@ public:
     }
 
     void send_command(const std::string& command) {
-        std::cerr << "StdPipeController: Sending command: " << command << "\n";
+        // White text on dark-blue background for commands we send
+        std::cerr << colordetect::colorstr("StdPipeController: Sending command: " + command,
+                                          colordetect::Color::White, colordetect::Color::Blue) << "\n";
+        
         std::string cmd_with_newline = command + "\n";
         ssize_t bytes_written = write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length());
         
@@ -217,13 +349,63 @@ public:
             response.pop_back();
         }
         
-        std::cerr << "StdPipeController: Received response: " << response << "\n";
+        // Bright white on black background for responses we receive
+        std::cerr << colordetect::colorstr("StdPipeController: Received response: " + response,
+                                          colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
         return response;
     }
 
     std::string send_command_and_read_reply(const std::string& command) {
+        handle_child(); // Capture any pending child output before sending
         send_command(command);
-        return read_response();
+        std::string response = read_response();
+        handle_child(); // Capture any child output after command processing
+        return response;
+    }
+
+    void handle_child() {
+        if (m_stdouterr_mode != StdOutErrMode::OutErrModeCapture) return;
+        
+        char buffer[4096];
+        
+        // Non-blocking read from child stdout pipe
+        if (child_stdout_pipe.side_read().is_open()) {
+            ssize_t bytes = read(child_stdout_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                accumulated_stdout += buffer;
+            }
+            // bytes == -1 with errno EAGAIN is normal for non-blocking read with no data
+        }
+        
+        // Non-blocking read from child stderr pipe
+        if (child_stderr_pipe.side_read().is_open()) {
+            ssize_t bytes = read(child_stderr_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1);
+            if (bytes > 0) {
+                buffer[bytes] = '\0';
+                accumulated_stderr += buffer;
+            }
+            // bytes == -1 with errno EAGAIN is normal for non-blocking read with no data
+        }
+    }
+
+    void display_and_clear_captured() {
+        if (m_stdouterr_mode != StdOutErrMode::OutErrModeCapture) return;
+        
+        if (!accumulated_stdout.empty()) {
+            // Light green for stdout
+            std::cout << colordetect::colorstr("[CHILD STDOUT] ", colordetect::Color::LightGreen)
+                      << colordetect::colorstr(accumulated_stdout, colordetect::Color::LightGreen);
+            if (accumulated_stdout.back() != '\n') std::cout << '\n';
+            accumulated_stdout.clear();
+        }
+        if (!accumulated_stderr.empty()) {
+            // Light red for stderr
+            std::cout << colordetect::colorstr("[CHILD STDERR] ", colordetect::Color::LightRed)
+                      << colordetect::colorstr(accumulated_stderr, colordetect::Color::LightRed);
+            if (accumulated_stderr.back() != '\n') std::cout << '\n';
+            accumulated_stderr.clear();
+        }
     }
 
     void run_cli_mode() {
@@ -233,6 +415,10 @@ public:
         try {
             std::string line;
             while (true) {
+                // Display any accumulated child output before prompt
+                handle_child();
+                display_and_clear_captured();
+                
                 std::cout << "> ";
                 std::cout.flush();
                 
@@ -298,6 +484,10 @@ public:
             }
             std::cerr << "✓ Ping test passed\n";
             
+            // Display any captured child output after ping test
+            handle_child();
+            display_and_clear_captured();
+            
             // Small delay
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             
@@ -307,6 +497,10 @@ public:
                 throw std::runtime_error("Expected 'goodbye' but got: '" + response2 + "'");
             }
             std::cerr << "✓ Quit test passed\n";
+            
+            // Display any final captured child output
+            handle_child();
+            display_and_clear_captured();
             
             // Close our end of the pipes
             cmd_pipe.side_write().close();
@@ -331,16 +525,21 @@ public:
 
 void print_usage(const std::string& program_name) {
     std::cout << "StdPipe Backend Controller\n\n";
-    std::cout << "Usage: " << program_name << " <mode> [submode] [server_path] [cleanup_exec_prog]\n\n";
+    std::cout << "Usage: " << program_name << " <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]\n\n";
     std::cout << "Arguments:\n";
     std::cout << "  mode              Operation mode: 'test', 'demo', or 'cli'\n";
     std::cout << "  submode           Optional submode string (default: empty)\n";
+    std::cout << "  stdouterr         Child stdout/stderr handling: 'direct', 'hide', or 'capture' (default: direct)\n";
     std::cout << "  server_path       Path to stdpipe_serv executable (default: ./stdpipe_serv)\n";
     std::cout << "  cleanup_exec_prog Optional path to clean_exec program for environment cleanup\n\n";
     std::cout << "Modes:\n";
     std::cout << "  test              Run automated ping/quit test (original behavior)\n";
     std::cout << "  demo              Same as test mode\n";
     std::cout << "  cli               Interactive command-line interface\n\n";
+    std::cout << "StdOutErr Modes:\n";
+    std::cout << "  direct            Child output goes directly to terminal (default)\n";
+    std::cout << "  hide              Child output is redirected to /dev/null (hidden)\n";
+    std::cout << "  capture           Child output is captured and shown before CLI prompts\n\n";
     std::cout << "CLI Mode Commands:\n";
     std::cout << "  <any text>        Send command to server and display response\n";
     std::cout << "  quit              Send quit to server, wait for response, then exit\n";
@@ -354,8 +553,8 @@ void print_usage(const std::string& program_name) {
     std::cout << "Examples:\n";
     std::cout << "  " << program_name << " test                         # Run test mode with defaults\n";
     std::cout << "  " << program_name << " cli                          # Interactive CLI mode\n";
-    std::cout << "  " << program_name << " test \"\" ./stdpipe_serv       # Specify server path\n";
-    std::cout << "  " << program_name << " cli \"\" ./stdpipe_serv ./clean_exec # CLI with cleanup\n\n";
+    std::cout << "  " << program_name << " test \"\" capture              # Test mode with captured child output\n";
+    std::cout << "  " << program_name << " cli \"\" hide ./stdpipe_serv   # CLI mode with hidden child output\n\n";
 }
 
 /**
@@ -402,9 +601,10 @@ int main(int argc, char* argv[]) {
         
         std::cerr << "StdPipe Backend Controller starting...\n";
         
-        // Parse new argument structure: <mode> [submode] [server_path] [cleanup_exec_prog]
+        // Parse new argument structure: <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]
         std::string mode = argvect.at(1);
         std::string submode = "";
+        std::string stdouterr_str = "direct";
         std::string server_path = "./stdpipe_serv";
         std::string cleanup_exec_prog = "";
         
@@ -413,10 +613,27 @@ int main(int argc, char* argv[]) {
             submode = argvect.at(2);
         }
         if (argvect.size() > 3) {
-            server_path = argvect.at(3);
+            stdouterr_str = argvect.at(3);
         }
         if (argvect.size() > 4) {
-            cleanup_exec_prog = argvect.at(4);
+            server_path = argvect.at(4);
+        }
+        if (argvect.size() > 5) {
+            cleanup_exec_prog = argvect.at(5);
+        }
+        
+        // Parse stdouterr mode
+        StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect;
+        if (stdouterr_str == "hide") {
+            stdouterr_mode = StdOutErrMode::OutErrModeHide;
+        } else if (stdouterr_str == "capture") {
+            stdouterr_mode = StdOutErrMode::OutErrModeCapture;
+        } else if (stdouterr_str == "direct") {
+            stdouterr_mode = StdOutErrMode::OutErrModeDirect;
+        } else {
+            std::cerr << "Error: Invalid stdouterr mode '" << stdouterr_str << "'. Must be 'direct', 'hide', or 'capture'\n\n";
+            print_usage(argvect.at(0));
+            return 1;
         }
         
         // Validate mode
@@ -433,14 +650,14 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         
-        std::cerr << "Mode: " << mode << ", Submode: '" << submode << "'\n";
+        std::cerr << "Mode: " << mode << ", Submode: '" << submode << "', StdOutErr: " << stdouterr_str << "\n";
         std::cerr << "Server path: " << server_path << "\n";
         if (!cleanup_exec_prog.empty()) {
             std::cerr << "Cleanup exec: " << cleanup_exec_prog << "\n";
         }
         
         // Create controller and dispatch based on mode
-        StdPipeController controller(server_path, cleanup_exec_prog);
+        StdPipeController controller(server_path, cleanup_exec_prog, stdouterr_mode);
         
         if (mode == "test") {
             controller.run_test();

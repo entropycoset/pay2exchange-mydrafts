@@ -37,14 +37,14 @@ endif()
 find_package(Boost REQUIRED COMPONENTS system filesystem iostreams program_options)
 
 # Create executables
-add_executable(stdpipe_back stdpipe_back.cpp)
+add_executable(stdpipe_back stdpipe_back.cpp libvalidcolor/libvalidcolor.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
 add_executable(clean_exec clean_exec.cpp envcleaner.cpp)
 add_executable(print_env_extra print_env_extra.cpp)
 
-# Link Boost to stdpipe_back and stdpipe_serv
-target_link_libraries(stdpipe_back ${Boost_LIBRARIES})
-target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS})
+# Link Boost and ncurses to stdpipe_back and stdpipe_serv
+target_link_libraries(stdpipe_back ${Boost_LIBRARIES} ncurses)
+target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS} libvalidcolor)
 
 target_link_libraries(stdpipe_serv ${Boost_LIBRARIES})
 target_include_directories(stdpipe_serv PRIVATE ${Boost_INCLUDE_DIRS})
