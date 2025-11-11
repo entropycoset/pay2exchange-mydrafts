@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Securely capture `lsof -nP -i -F pcun` into a temp file inside a private temp
+# directory and print records for each user in a comma-separated USER_LIST.
+#
+# Usage:
+#   USER_LIST="foo,bar" ./lsof-secure-multiuser.sh
+#   or
+#   ./lsof-secure-multiuser.sh foo,bar
+#
+# The script emits debug messages to stderr when creating and cleaning up the
+# temp dir/file. It avoids race conditions by creating a private temp dir with
+# mktemp -d (mode 700) and a file inside with mode 600. No shred is used.
+
+# Read user list from first argument or environment variable USER_LIST
+USER_LIST_ARG="${1:-}"
+if [[ -n "$USER_LIST_ARG" ]]; then
+  USER_LIST="$USER_LIST_ARG"
+else
+  USER_LIST="${USER_LIST:-}"
+fi
+
+if [[ -z "${USER_LIST:-}" ]]; then
+  echo "Usage: USER_LIST=\"user1,user2\" $0  or  $0 user1,user2" >&2
+  exit 2
+fi
+
+if ! command -v lsof >/dev/null 2>&1; then
+  echo "lsof: command not found" >&2
+  exit 2
+fi
+
+TMPDIR=""
+OUTFILE=""
+
+cleanup() {
+  # Print cleanup message to stderr
+  if [[ -n "${OUTFILE:-}" && -f "$OUTFILE" ]]; then
+    rm -f -- "$OUTFILE" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${TMPDIR:-}" && -d "$TMPDIR" ]]; then
+    echo "cleanup: removing temp dir $TMPDIR" >&2
+    rmdir -- "$TMPDIR" >/dev/null 2>&1 || rm -rf -- "$TMPDIR" >/dev/null 2>&1 || true
+  fi
+}
+
+trap cleanup EXIT INT TERM HUP
+
+# Create secure temp dir
+TMPDIR="$(mktemp -d 2>/dev/null || mktemp -d -t lsofsecure)" || {
+  echo "mktemp failed" >&2
+  exit 2
+}
+# Ensure private perms
+chmod 700 -- "$TMPDIR"
+echo "debug: created temp dir $TMPDIR" >&2
+
+# Create temp file inside tmpdir with safe perms
+OUTFILE="$(mktemp --tmpdir="$TMPDIR" lsof.XXXXXXXXXX 2>/dev/null || printf '%s/lsof.%s' "$TMPDIR" "$(head -c12 /dev/urandom | od -An -tx1 | tr -d ' \n')")"
+# If mktemp fallback gave only a name, create the file
+: > "$OUTFILE"
+chmod 600 -- "$OUTFILE"
+
+# Capture lsof output (machine-readable fields p,c,u,n)
+# Redirect stderr to /dev/null and ignore non-zero exit to still process partial output
+lsof -nP -i -F pcun >"$OUTFILE" 2>/dev/null || true
+cat "$OUTFILE"
+
+print_records_for_user() {
+  local user="$1" file="$2"
+  # resolve username -> uid (empty if not resolvable)
+  uid="$(getent passwd "$user" | awk -F: '{print $3}')"
+  echo "uid=$uid user=$user"
+  awk -v U="$user" -v UID="$uid" '
+    BEGIN { rec = ""; pat1 = "\\nu" U "\\n"; pat2 = UID != "" ? "\\nu" UID "\\n" : "" }
+    /^p/ {
+      if (rec != "") {
+        if (rec ~ pat1 || (pat2 && rec ~ pat2)) { printf "%s", rec }
+      }
+      rec = $0 "\n"
+      next
+    }
+    { rec = rec $0 "\n" }
+    END {
+      if (rec != "" && (rec ~ pat1 || (pat2 && rec ~ pat2))) { printf "%s", rec }
+    }
+  ' "$file"
+}
+
+# Iterate comma-separated user list and print results one user at a time.
+# Trim whitespace around names.
+OLD_IFS="$IFS"
+IFS=',' read -r -a USERS <<< "$USER_LIST"
+IFS="$OLD_IFS"
+
+first=1
+for u in "${USERS[@]}"; do
+  # trim leading/trailing whitespace
+  user="$(printf '%s' "$u" | sed 's/^[[:space:]]\+//;s/[[:space:]]\+$//')"
+  if [[ -z "$user" ]]; then
+    continue
+  fi
+
+  if [[ $first -ne 1 ]]; then
+    printf '%s\n' "-----------"
+  fi
+  first=0
+
+  printf '=== Records for user: %s ===\n' "$user"
+  print_records_for_user "$user" "$OUTFILE" || true
+done
+
+# cleanup will run via trap
+exit 0
+
