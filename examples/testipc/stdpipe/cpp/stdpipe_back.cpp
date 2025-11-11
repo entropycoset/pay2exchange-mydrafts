@@ -690,8 +690,7 @@ public:
         std::cerr << "StdPipeController: Starting demo mode - get_dynamic_global_properties\n";
         
         try {
-            // Set longer timeout for cli_wallet initialization and RPC connection
-            set_timeouts(30); // 30 seconds timeout for cli_wallet
+            set_timeouts(15);
             
             // Give cli_wallet some time to connect to RPC endpoint
             std::cerr << "StdPipeController: Waiting for cli_wallet to initialize and connect to RPC...\n";
@@ -726,6 +725,28 @@ public:
                 
             } catch (const nlohmann::json::exception& e) {
                 throw std::runtime_error("Failed to extract required JSON fields: " + std::string(e.what()));
+            }
+
+
+            {
+                std::string response = send_command_and_read_reply("get_global_properties");
+                nlohmann::json json_response;
+                try {
+                    json_response = nlohmann::json::parse(response);
+                } catch (const nlohmann::json::parse_error& e) {
+                    throw std::runtime_error("Failed to parse JSON response: " + std::string(e.what()));
+                }
+                
+                try {
+                    std::cout << "Active Witnesses:\n";
+                    const auto & data = json_response;
+                    for (const auto& witness_id : data["active_witnesses"]) {
+                        std::cout << witness_id << std::endl;
+                    }
+                } catch (const nlohmann::json::exception& e) {
+                    throw std::runtime_error("Failed to extract required JSON fields: " + std::string(e.what()));
+                }
+
             }
             
             // Send quit command
