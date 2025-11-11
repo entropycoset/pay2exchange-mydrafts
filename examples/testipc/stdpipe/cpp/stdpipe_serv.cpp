@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <fstream>
 #include <unistd.h>
+#include <thread>
+#include <chrono>
 #include <memory>
 #include <vector>
 #include <sstream>
@@ -149,6 +151,32 @@ public:
                 std::cerr << "Program received quit command - exiting loop\n";
                 send_reply("goodbye");
                 break;
+            } else if (command.substr(0, 6) == "sleep ") {
+                // Handle "sleep N" command where N is milliseconds
+                try {
+                    std::string ms_str = command.substr(6);
+                    if (ms_str.empty()) {
+                        send_reply("sleep command requires milliseconds parameter");
+                        continue;
+                    }
+                    
+                    unsigned int milliseconds = utils::parse_strict_integer<unsigned int>(ms_str);
+                    
+                    // Limit maximum sleep to prevent abuse (10 seconds = 10000ms)
+                    if (milliseconds > 10000) {
+                        send_reply("sleep duration limited to 10000 milliseconds maximum");
+                        continue;
+                    }
+                    
+                    std::cerr << "Program sleeping for " << milliseconds << " milliseconds\n";
+                    std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+                    std::cerr << "Program finished sleeping\n";
+                    
+                    send_reply("slept " + std::to_string(milliseconds) + " ms");
+                } catch (const std::exception& e) {
+                    std::cerr << "Error parsing sleep parameter: " << e.what() << "\n";
+                    send_reply("invalid sleep parameter: " + std::string(e.what()));
+                }
             } else {
                 std::cerr << "Unknown command received: '" << command << "'\n";
                 send_reply("command unknown");
@@ -170,6 +198,7 @@ void print_usage(const std::string& program_name) {
     std::cout << "  file descriptors. Typically spawned by stdpipe_back controller.\n\n";
     std::cout << "Commands:\n";
     std::cout << "  ping         Responds with 'pong'\n";
+    std::cout << "  sleep N      Sleeps for N milliseconds (max 10000) then responds\n";
     std::cout << "  quit         Responds with 'goodbye' and exits\n";
     std::cout << "  <unknown>    Responds with 'command unknown'\n\n";
     std::cout << "Note:\n";

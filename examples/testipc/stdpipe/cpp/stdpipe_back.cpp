@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/select.h>
@@ -118,6 +119,28 @@ private:
     StdOutErrMode m_stdouterr_mode;
     std::string accumulated_stdout;
     std::string accumulated_stderr;
+    
+    // Timeout configuration
+    std::chrono::seconds max_timeout{5};
+    std::chrono::milliseconds warn_timeout{2500};
+
+    // Helper lambda for timed pipe operations with timeout and warning
+    template<typename Operation>
+    auto timed_pipe_operation(const std::string& operation_name, Operation&& op) {
+        auto start_time = std::chrono::steady_clock::now();
+        
+        auto result = std::forward<Operation>(op)();
+        
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+        
+        if (duration >= warn_timeout) {
+            double seconds = duration.count() / 1000.0;
+            std::cerr << "Warning: operation took long " << operation_name << " - " << seconds << " seconds\n";
+        }
+        
+        return result;
+    }
 
 public:
     StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect)
@@ -322,77 +345,119 @@ public:
         // The my_pipe destructors will automatically close owned FDs
     }
 
+    // Timeout configuration methods
+    void set_timeouts(int max_timeout_seconds) {
+        max_timeout = std::chrono::seconds(max_timeout_seconds);
+        warn_timeout = std::chrono::milliseconds(max_timeout_seconds * 500); // Half of max_timeout
+    }
+    
+    void set_timeouts(int max_timeout_seconds, int warn_timeout_milliseconds) {
+        max_timeout = std::chrono::seconds(max_timeout_seconds);
+        warn_timeout = std::chrono::milliseconds(warn_timeout_milliseconds);
+    }
+
     void send_command(const std::string& command) {
         // White text on dark-blue background for commands we send
         std::cerr << colordetect::colorstr("StdPipeController: Sending command: " + command,
                                           colordetect::Color::White, colordetect::Color::Blue) << "\n";
         
-        std::string cmd_with_newline = command + "\n";
-        ssize_t bytes_written = check_syscall(write(cmd_pipe.side_write().get_fd(), cmd_with_newline.c_str(), cmd_with_newline.length()), "write");
-        
-        if (bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
-            throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
-                                    " of " + std::to_string(cmd_with_newline.length()) + " bytes written");
-        }
+        timed_pipe_operation("sending command", [&]() {
+            // Add timeout using select() for write operation
+            fd_set write_fds;
+            FD_ZERO(&write_fds);
+            
+            int fd = cmd_pipe.side_write().get_fd();
+            if (fd < 0 || fd >= FD_SETSIZE) {
+                throw std::runtime_error("Invalid file descriptor for write select(): " + std::to_string(fd));
+            }
+            
+            FD_SET(fd, &write_fds);
+            
+            struct timeval timeout_val;
+            timeout_val.tv_sec = max_timeout.count();
+            timeout_val.tv_usec = 0;
+            
+            int select_result = check_syscall(select(fd + 1, nullptr, &write_fds, nullptr, &timeout_val), "select write");
+            
+            if (select_result == 0) {
+                throw std::runtime_error("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
+            }
+            
+            if (!FD_ISSET(fd, &write_fds)) {
+                throw std::runtime_error("select() returned but FD is not ready for writing");
+            }
+            
+            std::string cmd_with_newline = command + "\n";
+            ssize_t bytes_written = check_syscall(write(fd, cmd_with_newline.c_str(), cmd_with_newline.length()), "write");
+            
+            if (bytes_written != static_cast<ssize_t>(cmd_with_newline.length())) {
+                throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
+                                        " of " + std::to_string(cmd_with_newline.length()) + " bytes written");
+            }
+            
+            return bytes_written;
+        });
     }
 
     std::string read_response() {
-        std::string response;
-        char buffer[1024];
-        
-        // Add 5-second timeout using select() with proper error handling
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        
-        int fd = resp_pipe.side_read().get_fd();
-        if (fd < 0 || fd >= FD_SETSIZE) {
-            throw std::runtime_error("Invalid file descriptor for select(): " + std::to_string(fd));
-        }
-        
-        FD_SET(fd, &read_fds);
-        
-        struct timeval timeout;
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 0;
-        
-        int select_result = check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout), "select");
-        
-        if (select_result == 0) {
-            throw std::runtime_error("Timeout waiting for server response (5 seconds)");
-        }
-        
-        // Verify the FD is actually ready for reading
-        if (!FD_ISSET(fd, &read_fds)) {
-            throw std::runtime_error("select() returned but FD is not ready for reading");
-        }
-        
-        ssize_t bytes_read = check_syscall(read(resp_pipe.side_read().get_fd(), buffer, sizeof(buffer) - 1), "read");
-        
-        if (bytes_read == 0) {
-            throw std::runtime_error("Server closed response pipe");
-        }
-        
-        // Ensure bounds safety: Check negative first to avoid wraparound, then check upper bound
-        if (bytes_read < 0) {
-            throw std::runtime_error("Negative bytes_read from read(): " + std::to_string(bytes_read));
-        }
-        if (bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
-            throw std::runtime_error("bytes_read exceeds buffer size: " + std::to_string(bytes_read) +
-                                    " >= " + std::to_string(sizeof(buffer)));
-        }
-        
-        buffer[bytes_read] = '\0';
-        response = buffer;
-        
-        // Remove trailing newline if present
-        if (!response.empty() && response.back() == '\n') {
-            response.pop_back();
-        }
-        
-        // Bright white on black background for responses we receive
-        std::cerr << colordetect::colorstr("StdPipeController: Received response: " + response,
-                                          colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
-        return response;
+        return timed_pipe_operation("reading reply", [&]() -> std::string {
+            std::string response;
+            char buffer[1024];
+            
+            // Add timeout using select() with proper error handling
+            fd_set read_fds;
+            FD_ZERO(&read_fds);
+            
+            int fd = resp_pipe.side_read().get_fd();
+            if (fd < 0 || fd >= FD_SETSIZE) {
+                throw std::runtime_error("Invalid file descriptor for select(): " + std::to_string(fd));
+            }
+            
+            FD_SET(fd, &read_fds);
+            
+            struct timeval timeout_val;
+            timeout_val.tv_sec = max_timeout.count();
+            timeout_val.tv_usec = 0;
+            
+            int select_result = check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout_val), "select");
+            
+            if (select_result == 0) {
+                throw std::runtime_error("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
+            }
+            
+            // Verify the FD is actually ready for reading
+            if (!FD_ISSET(fd, &read_fds)) {
+                throw std::runtime_error("select() returned but FD is not ready for reading");
+            }
+            
+            ssize_t bytes_read = check_syscall(read(fd, buffer, sizeof(buffer) - 1), "read");
+            
+            if (bytes_read == 0) {
+                throw std::runtime_error("Server closed response pipe");
+            }
+            
+            // Ensure bounds safety: Check negative first to avoid wraparound, then check upper bound
+            if (bytes_read < 0) {
+                throw std::runtime_error("Negative bytes_read from read(): " + std::to_string(bytes_read));
+            }
+            if (bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
+                throw std::runtime_error("bytes_read exceeds buffer size: " + std::to_string(bytes_read) +
+                                        " >= " + std::to_string(sizeof(buffer)));
+            }
+            
+            buffer[bytes_read] = '\0';
+            response = buffer;
+            
+            // Remove trailing newline if present
+            if (!response.empty() && response.back() == '\n') {
+                response.pop_back();
+            }
+            
+            // Bright white on black background for responses we receive
+            std::cerr << colordetect::colorstr("StdPipeController: Received response: " + response,
+                                              colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
+            return response;
+        });
     }
 
     std::string send_command_and_read_reply(const std::string& command) {
