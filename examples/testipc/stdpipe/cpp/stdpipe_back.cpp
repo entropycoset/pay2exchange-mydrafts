@@ -94,9 +94,15 @@ private:
 
 public:
     StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "") {
+        if (server_path.empty()) {
+            throw std::runtime_error("Server path cannot be empty");
+        }
+        
         std::cerr << "StdPipeController: Starting server process: " << server_path << "\n";
         if (!cleanup_exec_prog.empty()) {
             std::cerr << "StdPipeController: Using cleanup_exec: " << cleanup_exec_prog << "\n";
+        } else {
+            std::cerr << "StdPipeController: Warning: No cleanup_exec program specified - server will run in current environment\n";
         }
         
         try {
@@ -215,13 +221,78 @@ public:
         return response;
     }
 
+    std::string send_command_and_read_reply(const std::string& command) {
+        send_command(command);
+        return read_response();
+    }
+
+    void run_cli_mode() {
+        std::cerr << "StdPipeController: Starting CLI interactive mode\n";
+        std::cout << "Interactive CLI mode. Type 'quit', 'abort', or 'abort2' to exit.\n";
+        
+        try {
+            std::string line;
+            while (true) {
+                std::cout << "> ";
+                std::cout.flush();
+                
+                if (!std::getline(std::cin, line)) {
+                    // EOF reached (Ctrl+D)
+                    std::cout << "\nEOF reached, sending quit and exiting.\n";
+                    std::string response = send_command_and_read_reply("quit");
+                    std::cout << "Server response: " << response << std::endl;
+                    break;
+                }
+                
+                if (line == "quit") {
+                    // Send quit, wait for response, then exit
+                    std::string response = send_command_and_read_reply("quit");
+                    std::cout << "Server response: " << response << std::endl;
+                    break;
+                } else if (line == "abort") {
+                    // Send quit, then exit without waiting for response
+                    send_command("quit");
+                    std::cout << "Sent quit command, exiting without waiting for response.\n";
+                    break;
+                } else if (line == "abort2") {
+                    // Exit immediately without sending quit
+                    std::cout << "Exiting immediately without sending quit.\n";
+                    break;
+                } else {
+                    // Send the command and display response
+                    try {
+                        std::string response = send_command_and_read_reply(line);
+                        std::cout << "Server response: " << response << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error communicating with server: " << e.what() << std::endl;
+                        break;
+                    }
+                }
+            }
+            
+            // Close our end of the pipes
+            cmd_pipe.side_write().close();
+            resp_pipe.side_read().close();
+            
+            // Wait for server to exit
+            if (server_process.running()) {
+                server_process.wait();
+            }
+            
+            std::cerr << "CLI mode completed\n";
+            
+        } catch (const std::exception& e) {
+            std::cerr << "CLI mode error: " << e.what() << "\n";
+            throw;
+        }
+    }
+
     void run_test() {
         std::cerr << "StdPipeController: Starting communication test\n";
         
         try {
             // Test 1: Send ping, expect pong
-            send_command("ping");
-            std::string response1 = read_response();
+            std::string response1 = send_command_and_read_reply("ping");
             if (response1 != "pong") {
                 throw std::runtime_error("Expected 'pong' but got: '" + response1 + "'");
             }
@@ -231,8 +302,7 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             
             // Test 2: Send quit
-            send_command("quit");
-            std::string response2 = read_response();
+            std::string response2 = send_command_and_read_reply("quit");
             if (response2 != "goodbye") {
                 throw std::runtime_error("Expected 'goodbye' but got: '" + response2 + "'");
             }
@@ -261,25 +331,42 @@ public:
 
 void print_usage(const std::string& program_name) {
     std::cout << "StdPipe Backend Controller\n\n";
-    std::cout << "Usage: " << program_name << " [server_path] [cleanup_exec_prog]\n\n";
+    std::cout << "Usage: " << program_name << " <mode> [submode] [server_path] [cleanup_exec_prog]\n\n";
     std::cout << "Arguments:\n";
+    std::cout << "  mode              Operation mode: 'test', 'demo', or 'cli'\n";
+    std::cout << "  submode           Optional submode string (default: empty)\n";
     std::cout << "  server_path       Path to stdpipe_serv executable (default: ./stdpipe_serv)\n";
     std::cout << "  cleanup_exec_prog Optional path to clean_exec program for environment cleanup\n\n";
+    std::cout << "Modes:\n";
+    std::cout << "  test              Run automated ping/quit test (original behavior)\n";
+    std::cout << "  demo              Same as test mode\n";
+    std::cout << "  cli               Interactive command-line interface\n\n";
+    std::cout << "CLI Mode Commands:\n";
+    std::cout << "  <any text>        Send command to server and display response\n";
+    std::cout << "  quit              Send quit to server, wait for response, then exit\n";
+    std::cout << "  abort             Send quit to server, then exit without waiting\n";
+    std::cout << "  abort2            Exit immediately without sending quit\n\n";
     std::cout << "Description:\n";
     std::cout << "  Creates anonymous pipes and starts a stdpipe_serv process to handle commands.\n";
     std::cout << "  When cleanup_exec_prog is provided, the server runs in a cleaned environment:\n";
     std::cout << "  - FD cleanup: Only stdin/stdout/stderr and the two pipe FDs are kept\n";
     std::cout << "  - Environment cleanup: Only HOME and USER environment variables are preserved\n\n";
     std::cout << "Examples:\n";
-    std::cout << "  " << program_name << "                              # Use default server path\n";
-    std::cout << "  " << program_name << " ./stdpipe_serv               # Specify server path\n";
-    std::cout << "  " << program_name << " ./stdpipe_serv ./clean_exec  # Use cleanup for isolation\n\n";
+    std::cout << "  " << program_name << " test                         # Run test mode with defaults\n";
+    std::cout << "  " << program_name << " cli                          # Interactive CLI mode\n";
+    std::cout << "  " << program_name << " test \"\" ./stdpipe_serv       # Specify server path\n";
+    std::cout << "  " << program_name << " cli \"\" ./stdpipe_serv ./clean_exec # CLI with cleanup\n\n";
 }
 
 /**
  * StdPipe Backend Controller
  *
- * Usage: ./stdpipe_back [server_path] [cleanup_exec_prog]
+ * Usage: ./stdpipe_back <mode> [submode] [server_path] [cleanup_exec_prog]
+ *
+ * Modes:
+ * - test: Run automated ping/quit test (original behavior)
+ * - demo: Same as test mode
+ * - cli: Interactive command-line interface
  *
  * When cleanup_exec_prog is provided, the program executes:
  * ./clean_exec --run --clean-fd-except 0,1,2,<cmd_fd>,<resp_fd> --clean-env-except HOME,USER ./stdpipe_serv <cmd_fd> <resp_fd>
@@ -306,22 +393,62 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         
+        // Check minimum arguments
+        if (argvect.size() < 2) {
+            std::cerr << "Error: Missing required 'mode' argument\n\n";
+            print_usage(argvect.at(0));
+            return 1;
+        }
+        
         std::cerr << "StdPipe Backend Controller starting...\n";
         
-        // Determine server path - assume it's in the same directory
+        // Parse new argument structure: <mode> [submode] [server_path] [cleanup_exec_prog]
+        std::string mode = argvect.at(1);
+        std::string submode = "";
         std::string server_path = "./stdpipe_serv";
-        if (argvect.size() > 1) {
-            server_path = argvect.at(1);
-        }
-        
-        // Get cleanup_exec_prog argument (defaults to empty string)
         std::string cleanup_exec_prog = "";
+        
+        // Parse optional arguments
         if (argvect.size() > 2) {
-            cleanup_exec_prog = argvect.at(2);
+            submode = argvect.at(2);
+        }
+        if (argvect.size() > 3) {
+            server_path = argvect.at(3);
+        }
+        if (argvect.size() > 4) {
+            cleanup_exec_prog = argvect.at(4);
         }
         
+        // Validate mode
+        if (mode != "test" && mode != "demo" && mode != "cli") {
+            std::cerr << "Error: Invalid mode '" << mode << "'. Must be 'test', 'demo', or 'cli'\n\n";
+            print_usage(argvect.at(0));
+            return 1;
+        }
+        
+        // Validate server path is not empty
+        if (server_path.empty()) {
+            std::cerr << "Error: Server path cannot be empty\n\n";
+            print_usage(argvect.at(0));
+            return 1;
+        }
+        
+        std::cerr << "Mode: " << mode << ", Submode: '" << submode << "'\n";
+        std::cerr << "Server path: " << server_path << "\n";
+        if (!cleanup_exec_prog.empty()) {
+            std::cerr << "Cleanup exec: " << cleanup_exec_prog << "\n";
+        }
+        
+        // Create controller and dispatch based on mode
         StdPipeController controller(server_path, cleanup_exec_prog);
-        controller.run_test();
+        
+        if (mode == "test") {
+            controller.run_test();
+        } else if (mode == "demo") {
+            controller.run_test(); // Demo mode acts the same as test mode
+        } else if (mode == "cli") {
+            controller.run_cli_mode();
+        }
         
         std::cerr << "StdPipe Backend Controller completed successfully\n";
         return 0;

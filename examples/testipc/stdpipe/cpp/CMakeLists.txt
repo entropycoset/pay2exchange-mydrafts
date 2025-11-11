@@ -108,25 +108,37 @@ add_custom_target(test2
 # Post-build installation to tools directory
 # =====================================================
 
-# Copy executables to tools directory after building
+# Copy executables to tools directory after building (force overwrite)
 add_custom_command(TARGET stdpipe_back POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:stdpipe_back> "${P2E_TOOLS_DIR}/"
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_back> "${P2E_TOOLS_DIR}/"
-    COMMENT "✅ Installing stdpipe_back to ${P2E_TOOLS_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{HOME}/p2e-tools/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_back> "$ENV{HOME}/p2e-tools/tools/"
+    COMMENT "✅ Installing stdpipe_back to ${P2E_TOOLS_DIR} and ~/p2e-tools/tools/ (force overwrite)"
 )
 
 add_custom_command(TARGET stdpipe_serv POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:stdpipe_serv> "${P2E_TOOLS_DIR}/"
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_serv> "${P2E_TOOLS_DIR}/"
-    COMMENT "✅ Installing stdpipe_serv to ${P2E_TOOLS_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{HOME}/p2e-tools/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:stdpipe_serv> "$ENV{HOME}/p2e-tools/tools/"
+    COMMENT "✅ Installing stdpipe_serv to ${P2E_TOOLS_DIR} and ~/p2e-tools/tools/ (force overwrite)"
 )
 
 add_custom_command(TARGET clean_exec POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:clean_exec> "${P2E_TOOLS_DIR}/"
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:clean_exec> "${P2E_TOOLS_DIR}/"
-    COMMENT "✅ Installing clean_exec to ${P2E_TOOLS_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{HOME}/p2e-tools/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:clean_exec> "$ENV{HOME}/p2e-tools/tools/"
+    COMMENT "✅ Installing clean_exec to ${P2E_TOOLS_DIR} and ~/p2e-tools/tools/ (force overwrite)"
 )
 
 add_custom_command(TARGET print_env_extra POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:print_env_extra> "${P2E_TOOLS_DIR}/"
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:print_env_extra> "${P2E_TOOLS_DIR}/"
-    COMMENT "✅ Installing print_env_extra to ${P2E_TOOLS_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$ENV{HOME}/p2e-tools/tools"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:print_env_extra> "$ENV{HOME}/p2e-tools/tools/"
+    COMMENT "✅ Installing print_env_extra to ${P2E_TOOLS_DIR} and ~/p2e-tools/tools/ (force overwrite)"
 )
 
 # =====================================================
