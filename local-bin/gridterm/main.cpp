@@ -6,6 +6,8 @@
 #include <QGridLayout>
 #include <QVector>
 #include <QMenu>
+#include <QMenuBar>
+#include <QAction>
 #include <QContextMenuEvent>
 #include <QDir>
 #include <QDebug>
@@ -24,9 +26,21 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QFontDialog>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QInputDialog>
+#include <QFontDatabase>
 #include <qtermwidget.h>
 #include "myterm.hpp"
 #include "loopbackfinder.h"
+
+// Global font size constants
+namespace FontConstants {
+    const int MIN_SIZE = 5;
+    const int MAX_SIZE = 40;
+    const int NORMAL_SIZE = 10;
+}
 
 // Standard library includes
 #include <array>
@@ -165,20 +179,132 @@ namespace proj_count_ports {
     }
 }
 
-void configure_term(QTermWidget *term, int fontsize_add) {
+void configure_term(QTermWidget *term, int fontsize_add, const QFont *customFont = nullptr) {
     //term->setColor(QTermWidget::BackgroundRole, QColor(0, 0, 0));       // black background
     //term->setColor(QTermWidget::ForegroundRole, QColor(200, 200, 200)); // light gray text
     term->setColorScheme("gridterm");
     term->setColorScheme("Tango");
 
-    QFont f = term->getTerminalFont();
-    f.setPointSize(f.pointSize() + fontsize_add);
-    term->setTerminalFont(f);
+    if (customFont) {
+        QFont font = *customFont;
+        // Ensure font has valid size
+        if (font.pointSize() <= 0) {
+            font.setPointSize(10);
+        }
+        term->setTerminalFont(font);
+    } else {
+        QFont f = term->getTerminalFont();
+        int newSize = f.pointSize() + fontsize_add;
+        // Ensure the new size is valid (minimum 6pt)
+        if (newSize <= 0) {
+            newSize = 8;
+        }
+        f.setPointSize(newSize);
+        term->setTerminalFont(f);
+    }
 
     term->setScrollBarPosition(QTermWidget::ScrollBarRight);
     term->setHistorySize(10000);
-
 }
+
+/// Font settings for the application
+struct FontSettings {
+    QFont guiFont;
+    QFont terminalFont;
+    bool hasCustomGuiFont = false;
+    bool hasCustomTerminalFont = false;
+    
+    FontSettings() {
+        // Set default fonts
+        guiFont = QApplication::font();
+        // Ensure GUI font has valid size
+        if (guiFont.pointSize() <= 0) {
+            guiFont.setPointSize(FontConstants::NORMAL_SIZE);
+        }
+        
+        // Try to find a good terminal font
+        QStringList preferredTerminalFonts = {"Terminus", "DejaVu Sans Mono", "Liberation Mono",
+                                              "Consolas", "Monaco", "Courier New", "monospace"};
+        
+        QString selectedFont = "monospace"; // fallback
+        QStringList availableFonts = QFontDatabase::families();
+        for (const QString& fontName : preferredTerminalFonts) {
+            if (availableFonts.contains(fontName)) {
+                selectedFont = fontName;
+                break;
+            }
+        }
+        
+        terminalFont = QFont(selectedFont, FontConstants::NORMAL_SIZE);
+        // Ensure terminal font has valid size
+        if (terminalFont.pointSize() <= 0) {
+            terminalFont.setPointSize(FontConstants::NORMAL_SIZE);
+        }
+    }
+    
+    void loadSettings() {
+        QSettings settings(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) +
+                          "/gridterm/settings.ini", QSettings::IniFormat);
+        
+        // Load GUI font
+        if (settings.contains("gui_font_family")) {
+            guiFont.setFamily(settings.value("gui_font_family").toString());
+            int fontSize = settings.value("gui_font_size", 9).toInt();
+            if (fontSize <= 0) fontSize = 9;  // Ensure valid size
+            guiFont.setPointSize(fontSize);
+            hasCustomGuiFont = true;
+        }
+        
+        // Load terminal font
+        if (settings.contains("terminal_font_family")) {
+            terminalFont.setFamily(settings.value("terminal_font_family").toString());
+            int fontSize = settings.value("terminal_font_size", 10).toInt();
+            if (fontSize <= 0) fontSize = 10;  // Ensure valid size
+            terminalFont.setPointSize(fontSize);
+            hasCustomTerminalFont = true;
+        }
+    }
+    
+    void saveSettings() const {
+        QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/gridterm";
+        QDir().mkpath(configDir);
+        
+        QSettings settings(configDir + "/settings.ini", QSettings::IniFormat);
+        
+        // Save GUI font - ensure valid sizes
+        int guiSize = guiFont.pointSize();
+        if (guiSize <= 0) guiSize = 9;
+        int termSize = terminalFont.pointSize();
+        if (termSize <= 0) termSize = 10;
+        
+        settings.setValue("gui_font_family", guiFont.family());
+        settings.setValue("gui_font_size", guiSize);
+        
+        // Save terminal font
+        settings.setValue("terminal_font_family", terminalFont.family());
+        settings.setValue("terminal_font_size", termSize);
+        
+        settings.sync();
+    }
+    
+    // Font validation function
+    static bool validateFontSize(int size, QWidget *parent = nullptr) {
+        if (size < FontConstants::MIN_SIZE || size > FontConstants::MAX_SIZE) {
+            QString message = QString("Strange font size: %1\n"
+                                    "Normally screen fonts are in range %2-%3.\n"
+                                    "Do you want to continue with this size?")
+                             .arg(size)
+                             .arg(FontConstants::MIN_SIZE)
+                             .arg(FontConstants::MAX_SIZE);
+            
+            int result = QMessageBox::warning(parent, "Font Size Warning", message,
+                                             QMessageBox::Yes | QMessageBox::No,
+                                             QMessageBox::No);
+            return result == QMessageBox::Yes;
+        }
+        return true;
+    }
+};
 
 /// settings for this simulation/word
 struct WorldSettings {
@@ -245,7 +371,8 @@ private:
     int chainid_wait_cnt=0; ///< how many times we tried to read chainid file (waiting for it)
 
 public:
-    StartupPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> world, QWidget *parent = nullptr)
+    StartupPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> world,
+                const FontSettings *fontSettings = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings) , world(world)
         , commandFinished(false)
@@ -266,7 +393,11 @@ public:
 
         // terminal doing startup scripts
         startupTerm = new MyTerm();
-        configure_term(startupTerm, 0);
+        if (fontSettings && fontSettings->hasCustomTerminalFont) {
+            configure_term(startupTerm, 0, &fontSettings->terminalFont);
+        } else {
+            configure_term(startupTerm, 0);
+        }
 
         splitter->addWidget(logText);
         splitter->addWidget(startupTerm);
@@ -366,7 +497,8 @@ protected:
     std::shared_ptr<WorldSettings> world;
 
 public:
-    TerminalPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> _world, QWidget *parent = nullptr)
+    TerminalPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> _world,
+                 const FontSettings *fontSettings = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings)
         , world(_world)
@@ -396,7 +528,12 @@ public:
             QVBoxLayout *panelLayout = new QVBoxLayout(panel);
             panelLayout->setContentsMargins(1, 1, 1, 1);
             panelLayout->setSpacing(0);
-            MyTerm *term = new MyTerm();  configure_term(term, +1);
+            MyTerm *term = new MyTerm();
+            if (fontSettings && fontSettings->hasCustomTerminalFont) {
+                configure_term(term, +1, &fontSettings->terminalFont);
+            } else {
+                configure_term(term, +1);
+            }
             panelLayout->addWidget(term);
             topLayout->addWidget(panel);
             terminals.append(term);  // Add to array
@@ -409,7 +546,12 @@ public:
                 QVBoxLayout *panelLayout = new QVBoxLayout(panel);
                 panelLayout->setContentsMargins(1, 1, 1, 1);
                 panelLayout->setSpacing(0);
-                MyTerm *term = new MyTerm();  configure_term(term, -1);
+                MyTerm *term = new MyTerm();
+                if (fontSettings && fontSettings->hasCustomTerminalFont) {
+                    configure_term(term, -1, &fontSettings->terminalFont);
+                } else {
+                    configure_term(term, -1);
+                }
                 panelLayout->addWidget(term);
                 bottomLayout->addWidget(panel, row, col);
                 terminals.append(term);  // Add to array
@@ -671,7 +813,7 @@ private:
     std::shared_ptr<TerminalWindowSettings> m_settings;
 
 public:
-    SimulationPanel(std::shared_ptr<TerminalWindowSettings> settings, QWidget *parent = nullptr)
+    SimulationPanel(std::shared_ptr<TerminalWindowSettings> settings, const FontSettings *fontSettings = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_settings(settings)
     {
@@ -687,11 +829,11 @@ public:
         mainLayout->addWidget(tabWidget);
 
         // Create and add startup panel to tab #1
-        startupPanel = new StartupPanel(m_settings, world);
+        startupPanel = new StartupPanel(m_settings, world, fontSettings);
         tabWidget->addTab(startupPanel, "Startup");
 
         // Create and add terminal panel to tab #2
-        terminalPanel = new TerminalPanel(m_settings, world);
+        terminalPanel = new TerminalPanel(m_settings, world, fontSettings);
         tabWidget->addTab(terminalPanel, "Terminal Grid");
 
         // Create and add extra panel to tab #3
@@ -721,6 +863,7 @@ class SimulationWindow : public QMainWindow {
 private:
     SimulationPanel *simulationPanel;
     std::shared_ptr<TerminalWindowSettings> m_settings;
+    FontSettings fontSettings;
 
 public:
     SimulationWindow(std::shared_ptr<TerminalWindowSettings> settings, QWidget *parent = nullptr)
@@ -730,8 +873,19 @@ public:
         setWindowTitle("Grid Terminal Simulation");
         resize(1024, 768);
 
+        // Load font settings
+        fontSettings.loadSettings();
+        
+        // Apply GUI font if custom font is set
+        if (fontSettings.hasCustomGuiFont) {
+            QApplication::setFont(fontSettings.guiFont);
+        }
+
+        // Create menu bar
+        setupMenuBar();
+
         // Create and set the simulation panel as central widget
-        simulationPanel = new SimulationPanel(m_settings);
+        simulationPanel = new SimulationPanel(m_settings, &fontSettings);
         setCentralWidget(simulationPanel);
 
         // Setup keyboard shortcuts
@@ -751,10 +905,129 @@ public:
         return QMainWindow::eventFilter(obj, event);
     }
 
+private:
+    void setupMenuBar() {
+        // File menu
+        QMenu *fileMenu = menuBar()->addMenu("File");
+        QAction *quitAction = fileMenu->addAction("Quit");
+        quitAction->setShortcut(QKeySequence::Quit);
+        connect(quitAction, &QAction::triggered, this, &SimulationWindow::nice_shutdown);
+
+        // Settings menu
+        QMenu *settingsMenu = menuBar()->addMenu("Settings");
+        
+        // GUI Font options
+        QAction *guiFontSizeAction = settingsMenu->addAction("GUI Font - size only");
+        connect(guiFontSizeAction, &QAction::triggered, this, &SimulationWindow::selectGuiFontSizeOnly);
+        
+        QAction *guiFontAllAction = settingsMenu->addAction("GUI Font - all font settings");
+        connect(guiFontAllAction, &QAction::triggered, this, &SimulationWindow::selectGuiFontAll);
+        
+        settingsMenu->addSeparator();
+        
+        // Terminal Font options
+        QAction *termFontSizeAction = settingsMenu->addAction("Term font - size only");
+        connect(termFontSizeAction, &QAction::triggered, this, &SimulationWindow::selectTerminalFontSizeOnly);
+        
+        QAction *termFontAllAction = settingsMenu->addAction("Term font - all font settings");
+        connect(termFontAllAction, &QAction::triggered, this, &SimulationWindow::selectTerminalFontAll);
+    }
+
 public slots:
     void nice_shutdown() {
         this->close();
     }
+
+    void selectGuiFontSizeOnly() {
+        bool ok;
+        int currentSize = fontSettings.guiFont.pointSize();
+        int newSize = QInputDialog::getInt(this, "GUI Font Size", "Enter font size:",
+                                          currentSize, 1, 1000, 1, &ok);
+        if (ok) {
+            if (FontSettings::validateFontSize(newSize, this)) {
+                fontSettings.guiFont.setPointSize(newSize);
+                fontSettings.hasCustomGuiFont = true;
+                fontSettings.saveSettings();
+                QApplication::setFont(fontSettings.guiFont);
+                QMessageBox::information(this, "Font Changed",
+                    "GUI font size changed. Restart the application to see full effects.");
+            }
+        }
+    }
+
+    void selectGuiFontAll() {
+        bool ok;
+        // Fix font dialog issue by ensuring the font has proper style set
+        QFont currentFont = fontSettings.guiFont;
+        currentFont.setStyleHint(QFont::AnyStyle);
+        currentFont.setStyle(QFont::StyleNormal);
+        
+        QFont selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select GUI Font");
+        if (ok) {
+            if (FontSettings::validateFontSize(selectedFont.pointSize(), this)) {
+                fontSettings.guiFont = selectedFont;
+                fontSettings.hasCustomGuiFont = true;
+                fontSettings.saveSettings();
+                QApplication::setFont(fontSettings.guiFont);
+                QMessageBox::information(this, "Font Changed",
+                    "GUI font has been changed. Restart the application to see full effects.");
+            }
+        }
+    }
+
+    void selectTerminalFontSizeOnly() {
+        bool ok;
+        int currentSize = fontSettings.terminalFont.pointSize();
+        int newSize = QInputDialog::getInt(this, "Terminal Font Size", "Enter font size:",
+                                          currentSize, 1, 1000, 1, &ok);
+        if (ok) {
+            if (FontSettings::validateFontSize(newSize, this)) {
+                fontSettings.terminalFont.setPointSize(newSize);
+                fontSettings.hasCustomTerminalFont = true;
+                fontSettings.saveSettings();
+                applyTerminalFont();
+                QMessageBox::information(this, "Font Changed",
+                    "Terminal font size changed and applied to all terminals.");
+            }
+        }
+    }
+
+    void selectTerminalFontAll() {
+        bool ok;
+        // Fix font dialog issue by ensuring the font has proper style set
+        QFont currentFont = fontSettings.terminalFont;
+        currentFont.setStyleHint(QFont::Monospace);
+        currentFont.setStyle(QFont::StyleNormal);
+        
+        QFont selectedFont = QFontDialog::getFont(&ok, currentFont, this, "Select Terminal Font");
+        if (ok) {
+            if (FontSettings::validateFontSize(selectedFont.pointSize(), this)) {
+                fontSettings.terminalFont = selectedFont;
+                fontSettings.hasCustomTerminalFont = true;
+                fontSettings.saveSettings();
+                applyTerminalFont();
+                QMessageBox::information(this, "Font Changed",
+                    "Terminal font has been changed and applied to all terminals.");
+            }
+        }
+    }
+
+private:
+    void applyTerminalFont() {
+        // We need to access the terminals through the simulation panel
+        if (simulationPanel) {
+            // Find all MyTerm widgets recursively and apply the font
+            QList<MyTerm*> terminals = simulationPanel->findChildren<MyTerm*>();
+            for (MyTerm *term : terminals) {
+                if (term) {
+                    term->setTerminalFont(fontSettings.terminalFont);
+                }
+            }
+        }
+    }
+
+public:
+    const FontSettings& getFontSettings() const { return fontSettings; }
 };
 
 int main(int argc, char *argv[]) {
