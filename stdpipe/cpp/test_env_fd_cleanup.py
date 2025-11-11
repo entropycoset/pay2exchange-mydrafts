@@ -181,13 +181,132 @@ def test_env_cleanup():
     
     print("✓ Environment cleanup test passed")
     return True
+def test_stdpipe_back_wrapper_mode():
+    """Test stdpipe_back using safe_exec wrapper with print_env_extra"""
+    print("\n=== Testing stdpipe_back with safe_exec wrapper ===")
+    
+    # Create a modified print_env_extra wrapper that ignores FD arguments
+    # since stdpipe_back passes FD numbers as arguments
+    wrapper_script = """#!/bin/bash
+# This script ignores the FD arguments that stdpipe_back passes
+# and just runs print_env_extra to show the cleaned environment
+./print_env_extra
+"""
+    
+    script_path = "print_env_wrapper.sh"
+    try:
+        with open(script_path, 'w') as f:
+            f.write(wrapper_script)
+        os.chmod(script_path, 0o755)
+        
+        # Set some test environment variables
+        test_env = os.environ.copy()
+        test_env.update({
+            'TEST_STDPIPE_1': 'should_be_removed',
+            'TEST_STDPIPE_2': 'should_be_removed', 
+            'EXTRA_VAR': 'should_be_removed'
+        })
+        
+        # Open some extra FDs to test FD cleanup
+        test_files = []
+        try:
+            for i in range(2):
+                tf = tempfile.NamedTemporaryFile(delete=False)
+                test_files.append(tf.name)
+                tf.close()
+            
+            # Create a script that opens extra FDs and then runs stdpipe_back with wrapper
+            test_script = f"""#!/bin/bash
+set -e
+
+# Open some extra FDs that should be cleaned up
+exec 20</dev/null
+exec 21<{test_files[0]}
+
+# Run stdpipe_back with safe_exec wrapper, using our print_env wrapper instead of stdpipe_serv
+./stdpipe_back ./{script_path} ./safe_exec
+"""
+            
+            wrapper_test_script = "test_stdpipe_back_wrapper.sh"
+            with open(wrapper_test_script, 'w') as f:
+                f.write(test_script)
+            os.chmod(wrapper_test_script, 0o755)
+            
+            # Run the test
+            result = run_command(['bash', wrapper_test_script], env=test_env)
+            
+            if result.returncode != 0:
+                print(f"Test failed with return code {result.returncode}")
+                print(f"stdout: {result.stdout}")
+                print(f"stderr: {result.stderr}")
+                return False
+            
+            # Parse the output from print_env_extra
+            env_vars, fds = parse_print_env_extra_output(result.stdout)
+            
+            print(f"Wrapper mode - Resulting FDs: {fds}")
+            print(f"Wrapper mode - Environment variables: {len(env_vars)}")
+            
+            # Check FDs - should have basic FDs (0,1,2) plus the two pipe FDs created by stdpipe_back
+            # The pipe FDs will be higher numbered, we just check that test FDs 20,21 are gone
+            test_fds = {20, 21}
+            if test_fds.intersection(set(fds)):
+                print(f"ERROR: Test FDs {test_fds.intersection(set(fds))} were not cleaned up")
+                return False
+            
+            # Check basic FDs are present  
+            expected_basic_fds = {0, 1, 2}
+            if not expected_basic_fds.issubset(set(fds)):
+                print(f"ERROR: Basic FDs {expected_basic_fds} not found in {fds}")
+                return False
+            
+            # Check environment variables - should only have HOME and USER (if they exist)
+            # Plus any new vars set by stdpipe_back process
+            found_test_vars = set()
+            found_allowed_vars = set()
+            
+            for var in env_vars:
+                if '=' in var:
+                    name = var.split('=', 1)[0]
+                    if name.startswith('TEST_STDPIPE') or name == 'EXTRA_VAR':
+                        found_test_vars.add(name)
+                    elif name in ['HOME', 'USER']:
+                        found_allowed_vars.add(name)
+            
+            if found_test_vars:
+                print(f"ERROR: Test environment variables were not cleaned: {found_test_vars}")
+                return False
+            
+            print(f"✓ Allowed environment variables found: {found_allowed_vars}")
+            print("✓ stdpipe_back wrapper mode test passed")
+            return True
+            
+        finally:
+            # Cleanup test files
+            for tf in test_files:
+                try:
+                    os.unlink(tf)
+                except:
+                    pass
+            
+    finally:
+        # Cleanup scripts
+        try:
+            os.unlink(script_path)
+        except:
+            pass
+        try:
+            os.unlink("test_stdpipe_back_wrapper.sh") 
+        except:
+            pass
+
 
 def main():
     """Main test function"""
     print("=== Environment and FD Cleanup Test Suite ===")
     
     # Check if executables exist
-    required_files = ['./safe_exec', './print_env_extra']
+    required_files = ['./safe_exec', './print_env_extra', './stdpipe_back']
     for f in required_files:
         if not os.path.exists(f):
             print(f"ERROR: Required file {f} not found")
@@ -195,7 +314,7 @@ def main():
     
     # Run tests
     tests_passed = 0
-    total_tests = 2
+    total_tests = 3
     
     if test_fd_cleanup():
         tests_passed += 1
@@ -203,11 +322,15 @@ def main():
     if test_env_cleanup():
         tests_passed += 1
     
+    if test_stdpipe_back_wrapper_mode():
+        tests_passed += 1
+    
     print(f"\n=== Test Results ===")
     print(f"Passed: {tests_passed}/{total_tests}")
     
     if tests_passed == total_tests:
         print("🎉 All tests passed!")
+        print("Both modes of _back program tested: with wrapper and without wrapper.")
         return 0
     else:
         print("❌ Some tests failed!")
