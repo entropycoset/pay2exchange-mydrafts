@@ -84,7 +84,7 @@ private:
     using fd_sink = boost::iostreams::file_descriptor_sink;
     using fd_stream_in = boost::iostreams::stream<fd_source>;
     using fd_stream_out = boost::iostreams::stream<fd_sink>;
-    
+
     std::unique_ptr<fd_stream_in> cmd_in_file;   // command input pipe
     std::unique_ptr<fd_stream_out> cmd_out_file; // command output pipe
     libcmdformat::CmdFormat cmd_format = libcmdformat::CmdFormat::cmdformat_v1lenend; // Use v1lenend format
@@ -117,10 +117,10 @@ public:
 
     void send_reply(const std::string& reply) {
         stdpipeutil::stderr_msg("Program sending reply: " + reply);
-        
+
         // Use libcmdformat to encode the reply
         std::string formatted_reply = libcmdformat::encode_command(reply, cmd_format);
-        
+
         cmd_out_file->write(formatted_reply.c_str(), formatted_reply.length());
         if (cmd_out_file->fail()) {
             stdpipeutil::stderr_msg("Error: Failed to write reply to command output pipe");
@@ -132,13 +132,13 @@ public:
     void main_loop() {
         while (true) {
             stdpipeutil::stderr_msg("Program waiting for command...");
-            
+
             try {
                 // Use libcmdformat to decode the command
                 std::string command = libcmdformat::decode_command(*cmd_in_file, cmd_format);
-                
+
                 stdpipeutil::stderr_msg("Program getting a command: '" + command + "'");
-                
+
                 if (command == "ping") {
                     send_reply("pong");
                 } else if (command == "quit") {
@@ -153,19 +153,19 @@ public:
                             send_reply("sleep command requires milliseconds parameter");
                             continue;
                         }
-                        
+
                         unsigned int milliseconds = utils::parse_strict_integer<unsigned int>(ms_str);
-                        
+
                         // Limit maximum sleep to prevent abuse (10 seconds = 10000ms)
                         if (milliseconds > 10000) {
                             send_reply("sleep duration limited to 10000 milliseconds maximum");
                             continue;
                         }
-                        
+
                         stdpipeutil::stderr_msg("Program sleeping for " + std::to_string(milliseconds) + " milliseconds");
                         std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
                         stdpipeutil::stderr_msg("Program finished sleeping");
-                        
+
                         send_reply("slept " + std::to_string(milliseconds) + " ms");
                     } catch (const std::exception& e) {
                         stdpipeutil::stderr_msg("Error parsing sleep parameter: " + std::string(e.what()));
@@ -188,7 +188,7 @@ public:
                 }
             }
         }
-        
+
         stdpipeutil::stderr_msg("Program exiting main loop");
     }
 };
@@ -222,13 +222,13 @@ int main(int argc, char* argv[]) {
             }
             argvect.push_back(std::string(argv[i]));
         }
-        
+
         // Check for --help
         if (argvect.size() > 1 && argvect.at(1) == "--help") {
             print_usage(argvect.at(0));
             return 0;
         }
-        
+
         // Expect command line arguments for the two pipe file descriptors
         if (argvect.size() != 3) {
             print_usage(argvect.at(0));
