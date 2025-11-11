@@ -1,0 +1,10 @@
+
+
+
+keybinds
+
+
+workbench.action.navigateBack - set to - alt+left
+workbench.action.navigateForward set to alt+right
+
+
