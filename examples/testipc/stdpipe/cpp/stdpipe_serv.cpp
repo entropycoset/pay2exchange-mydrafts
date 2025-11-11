@@ -12,9 +12,8 @@
 #include <limits>
 #include <cstdlib>
 #include <cerrno>
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/iostreams/stream.hpp>
 #include "libcmdformat/libcmdformat.hpp"
+#include "libstdpipeutil/libstdpipeutil.hpp"
 
 namespace utils {
 
@@ -92,39 +91,39 @@ private:
 
 public:
     StdPipeServer(int cmd_in_fd, int cmd_out_fd) {
-        std::cerr << "\033[0mProgram starting - StdPipe Server initializing with FDs: "
-                  << cmd_in_fd << ", " << cmd_out_fd << "\033[0m\n";
+        stdpipeutil::stderr_msg("Program starting - StdPipe Server initializing with FDs: " +
+                                std::to_string(cmd_in_fd) + ", " + std::to_string(cmd_out_fd));
 
         // Create boost::iostreams from native file descriptors
         try {
             cmd_in_file = std::make_unique<fd_stream_in>(cmd_in_fd, boost::iostreams::never_close_handle);
             if (!cmd_in_file->is_open()) {
-                std::cerr << "\033[0mError: Failed to open command input pipe (FD " << cmd_in_fd << ")\033[0m\n";
+                stdpipeutil::stderr_msg("Error: Failed to open command input pipe (FD " + std::to_string(cmd_in_fd) + ")");
                 throw std::runtime_error("Failed to open command input pipe");
             }
 
             cmd_out_file = std::make_unique<fd_stream_out>(cmd_out_fd, boost::iostreams::never_close_handle);
             if (!cmd_out_file->is_open()) {
-                std::cerr << "\033[0mError: Failed to open command output pipe (FD " << cmd_out_fd << ")\033[0m\n";
+                stdpipeutil::stderr_msg("Error: Failed to open command output pipe (FD " + std::to_string(cmd_out_fd) + ")");
                 throw std::runtime_error("Failed to open command output pipe");
             }
         } catch (const std::exception& e) {
-            std::cerr << "\033[0mError creating boost::iostreams from FDs: " << e.what() << "\033[0m\n";
+            stdpipeutil::stderr_msg("Error creating boost::iostreams from FDs: " + std::string(e.what()));
             throw;
         }
 
-        std::cerr << "\033[0mProgram starting - StdPipe Server initialized successfully\033[0m\n";
+        stdpipeutil::stderr_msg("Program starting - StdPipe Server initialized successfully");
     }
 
     void send_reply(const std::string& reply) {
-        std::cerr << "\033[0mProgram sending reply: " << reply << "\033[0m\n";
+        stdpipeutil::stderr_msg("Program sending reply: " + reply);
         
         // Use libcmdformat to encode the reply
         std::string formatted_reply = libcmdformat::encode_command(reply, cmd_format);
         
         cmd_out_file->write(formatted_reply.c_str(), formatted_reply.length());
         if (cmd_out_file->fail()) {
-            std::cerr << "\033[0mError: Failed to write reply to command output pipe\033[0m\n";
+            stdpipeutil::stderr_msg("Error: Failed to write reply to command output pipe");
             throw std::runtime_error("Failed to write to command output pipe");
         }
         cmd_out_file->flush();
@@ -132,18 +131,18 @@ public:
 
     void main_loop() {
         while (true) {
-            std::cerr << "\033[0mProgram waiting for command...\033[0m\n";
+            stdpipeutil::stderr_msg("Program waiting for command...");
             
             try {
                 // Use libcmdformat to decode the command
                 std::string command = libcmdformat::decode_command(*cmd_in_file, cmd_format);
                 
-                std::cerr << "\033[0mProgram getting a command: '" << command << "'\033[0m\n";
+                stdpipeutil::stderr_msg("Program getting a command: '" + command + "'");
                 
                 if (command == "ping") {
                     send_reply("pong");
                 } else if (command == "quit") {
-                    std::cerr << "\033[0mProgram received quit command - exiting loop\033[0m\n";
+                    stdpipeutil::stderr_msg("Program received quit command - exiting loop");
                     send_reply("goodbye");
                     break;
                 } else if (command.substr(0, 6) == "sleep ") {
@@ -163,34 +162,34 @@ public:
                             continue;
                         }
                         
-                        std::cerr << "\033[0mProgram sleeping for " << milliseconds << " milliseconds\033[0m\n";
+                        stdpipeutil::stderr_msg("Program sleeping for " + std::to_string(milliseconds) + " milliseconds");
                         std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-                        std::cerr << "\033[0mProgram finished sleeping\033[0m\n";
+                        stdpipeutil::stderr_msg("Program finished sleeping");
                         
                         send_reply("slept " + std::to_string(milliseconds) + " ms");
                     } catch (const std::exception& e) {
-                        std::cerr << "\033[0mError parsing sleep parameter: " << e.what() << "\033[0m\n";
+                        stdpipeutil::stderr_msg("Error parsing sleep parameter: " + std::string(e.what()));
                         send_reply("invalid sleep parameter: " + std::string(e.what()));
                     }
                 } else {
-                    std::cerr << "\033[0mUnknown command received: '" << command << "'\033[0m\n";
+                    stdpipeutil::stderr_msg("Unknown command received: '" + command + "'");
                     send_reply("command unknown");
                 }
             } catch (const std::exception& e) {
-                std::cerr << "\033[0mError reading/decoding command: " << e.what() << "\033[0m\n";
+                stdpipeutil::stderr_msg("Error reading/decoding command: " + std::string(e.what()));
                 // Check if it's EOF or a real error
                 if (cmd_in_file->eof()) {
-                    std::cerr << "\033[0mProgram detected end of input - exiting loop\033[0m\n";
+                    stdpipeutil::stderr_msg("Program detected end of input - exiting loop");
                     break;
                 } else {
                     // For other errors, we might want to continue or exit depending on the error
-                    std::cerr << "\033[0mContinuing after command decode error...\033[0m\n";
+                    stdpipeutil::stderr_msg("Continuing after command decode error...");
                     continue;
                 }
             }
         }
         
-        std::cerr << "\033[0mProgram exiting main loop\033[0m\n";
+        stdpipeutil::stderr_msg("Program exiting main loop");
     }
 };
 
@@ -239,22 +238,22 @@ int main(int argc, char* argv[]) {
 
         int cmd_in_fd = utils::parse_strict_integer<int>(argvect.at(1));
         int cmd_out_fd = utils::parse_strict_integer<int>(argvect.at(2));
-        std::cerr << "\033[0mWill talk CMD on: cmd-in fd " << cmd_in_fd << ", cmd-out fd " << cmd_out_fd << "\033[0m\n";
+        stdpipeutil::stderr_msg("Will talk CMD on: cmd-in fd " + std::to_string(cmd_in_fd) + ", cmd-out fd " + std::to_string(cmd_out_fd));
 
         if (cmd_in_fd < 0 || cmd_out_fd < 0) {
-            std::cerr << "\033[0mError: Invalid file descriptor numbers\033[0m\n";
+            stdpipeutil::stderr_msg("Error: Invalid file descriptor numbers");
             throw std::runtime_error("Invalid file descriptor numbers");
         }
 
         StdPipeServer server(cmd_in_fd, cmd_out_fd);
         server.main_loop();
-        std::cout << "\033[0mProgram exiting normally\033[0m\n";
+        std::cout << stdpipeutil::make_reset_msg("Program exiting normally");
         return 0;
     } catch (const std::exception& e) {
-        std::cerr << "\033[0mException caught: " << e.what() << "\033[0m\n";
+        stdpipeutil::stderr_msg("Exception caught: " + std::string(e.what()));
         return 1;
     } catch (...) {
-        std::cerr << "\033[0mUnknown exception caught\033[0m\n";
+        stdpipeutil::stderr_msg("Unknown exception caught");
         return 2;
     }
 }

@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <sstream>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/select.h>
@@ -12,21 +13,13 @@
 #include <errno.h>
 #include <cstring>
 #include <boost/process.hpp>
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/iostreams/stream.hpp>
+#include <nlohmann/json.hpp>
 #include "libvalidcolor/libvalidcolor.hpp"
 #include "libcmdformat/libcmdformat.hpp"
+#include "libstdpipeutil/libstdpipeutil.hpp"
 
 namespace bp = boost::process;
 
-// Template function to wrap libc functions and throw on error with errno text
-template<typename T>
-T check_syscall(T result, const char* syscall_name) {
-    if (result == -1) {
-        throw std::runtime_error(std::string(syscall_name) + " failed: " + std::strerror(errno));
-    }
-    return result;
-}
 
 enum class StdOutErrMode {
     OutErrModeHide,     // Redirect stdout/stderr to /dev/null
@@ -91,7 +84,7 @@ public:
     // Function spawn() calls pipe() and save the FDs
     void spawn() {
         int pipe_fds[2];
-        check_syscall(pipe(pipe_fds), "pipe");
+        stdpipeutil::check_syscall(pipe(pipe_fds), "pipe");
         // we own both ends
         m_read.set_fd(pipe_fds[0], true);   // Read end
         m_write.set_fd(pipe_fds[1], true);  // Write end
@@ -150,7 +143,7 @@ private:
     }
 
 public:
-    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect, const std::string& mode = "")
+    StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect, const std::string& mode = "", const std::vector<std::string>& server_args = {})
         : m_stdouterr_mode(stdouterr_mode) {
         
         // Always use v1lenend format now that both client and server support it
@@ -177,11 +170,11 @@ public:
                 child_stderr_pipe.spawn();
                 
                 // Set non-blocking mode on read ends
-                int flags = check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
-                check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
+                int flags = stdpipeutil::check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
+                stdpipeutil::check_syscall(fcntl(child_stdout_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
                 
-                flags = check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
-                check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
+                flags = stdpipeutil::check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
+                stdpipeutil::check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
                 
                 std::cerr << "StdPipeController: Created secure anonymous pipes for stdout/stderr capture\n";
             }
@@ -195,29 +188,60 @@ public:
             
             std::cerr << "StdPipeController: Will pass FDs " << cmd_fd_str << " and " << resp_fd_str << " to child process\n";
             
+            // Prepare arguments vector
+            std::vector<std::string> all_args;
+            
+            // Add server-specific arguments first (for cli_wallet)
+            for (const auto& arg : server_args) {
+                all_args.push_back(arg);
+            }
+            
+            // Add cmd-pipe argument for cli_wallet or FD args for stdpipe_serv
+            if (!server_args.empty()) {
+                // For cli_wallet, use --cmd-pipe XXX,YYY format
+                all_args.push_back("--cmd-pipe");
+                all_args.push_back(cmd_fd_str + "," + resp_fd_str);
+            } else {
+                // For stdpipe_serv, use individual FD arguments
+                all_args.push_back(cmd_fd_str);
+                all_args.push_back(resp_fd_str);
+            }
+            
+            // Debug: print all arguments
+            std::cerr << "StdPipeController: Starting with args:";
+            for (const auto& arg : all_args) {
+                std::cerr << " '" << arg << "'";
+            }
+            std::cerr << "\n";
+            
             // Start the server process - setup redirection based on stdouterr mode
             if (cleanup_exec_prog.empty()) {
                 // Direct execution
                 switch (m_stdouterr_mode) {
-                    case StdOutErrMode::OutErrModeHide:
+                    case StdOutErrMode::OutErrModeHide: {
+                        std::vector<std::string> args_for_bp = {server_path};
+                        args_for_bp.insert(args_for_bp.end(), all_args.begin(), all_args.end());
                         server_process = bp::child(
-                            server_path,
-                            cmd_fd_str,
-                            resp_fd_str,
+                            args_for_bp,
                             bp::std_in.close(),
                             bp::std_out > "/dev/null",
                             bp::std_err > "/dev/null"
                         );
                         break;
+                    }
                     case StdOutErrMode::OutErrModeCapture: {
                         // Use manual fork/exec approach for precise control
-                        pid_t pid = check_syscall(fork(), "fork");
+                        pid_t pid = stdpipeutil::check_syscall(fork(), "fork");
                         if (pid == 0) {
                             // Child process
-                            check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
-                            check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
-                            check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
-                            check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
+                            stdpipeutil::check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
+                            stdpipeutil::check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
+                            
+                            // For stdpipe_serv, ensure FDs are at expected positions
+                            if (server_args.empty()) {
+                                stdpipeutil::check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
+                                stdpipeutil::check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
+                            }
                             
                             // Close all our pipe ends in child
                             cmd_pipe.side_write().close();
@@ -225,8 +249,16 @@ public:
                             child_stdout_pipe.side_read().close();
                             child_stderr_pipe.side_read().close();
                             
-                            execl(server_path.c_str(), server_path.c_str(), cmd_fd_str.c_str(), resp_fd_str.c_str(), (char*)nullptr);
-                            exit(1); // If execl fails
+                            // Prepare execv arguments
+                            std::vector<const char*> argv_exec;
+                            argv_exec.push_back(server_path.c_str());
+                            for (const auto& arg : all_args) {
+                                argv_exec.push_back(arg.c_str());
+                            }
+                            argv_exec.push_back(nullptr);
+                            
+                            execv(server_path.c_str(), const_cast<char* const*>(argv_exec.data()));
+                            exit(1); // If execv fails
                         } else if (pid > 0) {
                             // Parent process - wrap pid in boost::process child
                             server_process = bp::child(pid);
@@ -236,14 +268,15 @@ public:
                         break;
                     }
                     case StdOutErrMode::OutErrModeDirect:
-                    default:
+                    default: {
+                        std::vector<std::string> args_for_bp = {server_path};
+                        args_for_bp.insert(args_for_bp.end(), all_args.begin(), all_args.end());
                         server_process = bp::child(
-                            server_path,
-                            cmd_fd_str,
-                            resp_fd_str,
+                            args_for_bp,
                             bp::std_in.close()
                         );
                         break;
+                    }
                 }
             } else {
                 // Execute via cleanup_exec with cleanup options
@@ -274,13 +307,13 @@ public:
                         break;
                     case StdOutErrMode::OutErrModeCapture: {
                         // For cleanup_exec path, use manual fork/exec as well
-                        pid_t pid = check_syscall(fork(), "fork");
+                        pid_t pid = stdpipeutil::check_syscall(fork(), "fork");
                         if (pid == 0) {
                             // Child process
-                            check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
-                            check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
-                            check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
-                            check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
+                            stdpipeutil::check_syscall(dup2(child_stdout_pipe.side_write().get_fd(), STDOUT_FILENO), "dup2 stdout");
+                            stdpipeutil::check_syscall(dup2(child_stderr_pipe.side_write().get_fd(), STDERR_FILENO), "dup2 stderr");
+                            stdpipeutil::check_syscall(dup2(cmd_pipe.side_read().get_fd(), atoi(cmd_fd_str.c_str())), "dup2 cmd");
+                            stdpipeutil::check_syscall(dup2(resp_pipe.side_write().get_fd(), atoi(resp_fd_str.c_str())), "dup2 resp");
                             
                             // Close all our pipe ends in child
                             cmd_pipe.side_write().close();
@@ -387,7 +420,7 @@ public:
             timeout_val.tv_sec = max_timeout.count();
             timeout_val.tv_usec = 0;
             
-            int select_result = check_syscall(select(fd + 1, nullptr, &write_fds, nullptr, &timeout_val), "select write");
+            int select_result = stdpipeutil::check_syscall(select(fd + 1, nullptr, &write_fds, nullptr, &timeout_val), "select write");
             
             if (select_result == 0) {
                 throw std::runtime_error("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
@@ -400,7 +433,11 @@ public:
             // Use libcmdformat to encode the command
             std::string formatted_command = libcmdformat::encode_command(command, m_cmdformat);
             
-            ssize_t bytes_written = check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
+            // Show raw encoded command being sent
+            std::cerr << colordetect::colorstr("StdPipeController: Sending RAW: " + formatted_command,
+                                              colordetect::Color::LightCyan, colordetect::Color::Black) << "\n";
+            
+            ssize_t bytes_written = stdpipeutil::check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
             
             if (bytes_written != static_cast<ssize_t>(formatted_command.length())) {
                 throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
@@ -428,7 +465,7 @@ public:
             timeout_val.tv_sec = max_timeout.count();
             timeout_val.tv_usec = 0;
             
-            int select_result = check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout_val), "select");
+            int select_result = stdpipeutil::check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout_val), "select");
             
             if (select_result == 0) {
                 throw std::runtime_error("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
@@ -439,17 +476,33 @@ public:
                 throw std::runtime_error("select() returned but FD is not ready for reading");
             }
             
-            // Create a file descriptor stream for libcmdformat to read from
-            boost::iostreams::file_descriptor_source fd_source(fd, boost::iostreams::never_close_handle);
-            boost::iostreams::stream<boost::iostreams::file_descriptor_source> input_stream(fd_source);
+            // First read the raw data to show what we received
+            char buffer[1024];
+            ssize_t bytes_read = stdpipeutil::check_syscall(read(fd, buffer, sizeof(buffer) - 1), "read");
             
-            // Use libcmdformat to decode the response
-            std::string response = libcmdformat::decode_command(input_stream, m_cmdformat);
+            if (bytes_read == 0) {
+                throw std::runtime_error("Server closed response pipe");
+            }
             
-            // Bright white on black background for responses we receive
-            std::cerr << colordetect::colorstr("StdPipeController: Received response: " + response,
+            if (bytes_read < 0 || bytes_read >= static_cast<ssize_t>(sizeof(buffer))) {
+                throw std::runtime_error("Invalid bytes_read from read(): " + std::to_string(bytes_read));
+            }
+            
+            buffer[bytes_read] = '\0';
+            std::string raw_response = buffer;
+            
+            // Show raw received data
+            std::cerr << colordetect::colorstr("StdPipeController: Received RAW: " + raw_response,
+                                              colordetect::Color::LightYellow, colordetect::Color::Black) << "\n";
+            
+            // Now decode the raw response using libcmdformat
+            std::istringstream raw_stream(raw_response);
+            std::string decoded_response = libcmdformat::decode_command(raw_stream, m_cmdformat);
+            
+            // Bright white on black background for decoded responses
+            std::cerr << colordetect::colorstr("StdPipeController: Decoded response: " + decoded_response,
                                               colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
-            return response;
+            return decoded_response;
         });
     }
 
@@ -628,6 +681,76 @@ public:
             throw;
         }
     }
+
+    void run_demo_gdgp() {
+        std::cerr << "StdPipeController: Starting demo mode - get_dynamic_global_properties\n";
+        
+        try {
+            // Set longer timeout for cli_wallet initialization and RPC connection
+            set_timeouts(30); // 30 seconds timeout for cli_wallet
+            
+            // Give cli_wallet some time to connect to RPC endpoint
+            std::cerr << "StdPipeController: Waiting for cli_wallet to initialize and connect to RPC...\n";
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            
+            // Send get_dynamic_global_properties command
+            std::cerr << "StdPipeController: Sending get_dynamic_global_properties command...\n";
+            std::string response = send_command_and_read_reply("get_dynamic_global_properties");
+            
+            // Parse JSON response
+            nlohmann::json json_response;
+            try {
+                json_response = nlohmann::json::parse(response);
+            } catch (const nlohmann::json::parse_error& e) {
+                throw std::runtime_error("Failed to parse JSON response: " + std::string(e.what()));
+            }
+            
+            // Print nicely formatted JSON
+            std::cout << "JSON Response (formatted):\n";
+            std::cout << json_response.dump(4) << std::endl;
+            
+            // Extract the 3 required values
+            try {
+                auto head_block_number = json_response["head_block_number"].get<int>();
+                auto head_block_id = json_response["head_block_id"].get<std::string>();
+                auto time = json_response["time"].get<std::string>();
+                
+                std::cout << "\nExtracted values:\n";
+                std::cout << "head_block_number: " << head_block_number << std::endl;
+                std::cout << "head_block_id: " << head_block_id << std::endl;
+                std::cout << "time: " << time << std::endl;
+                
+            } catch (const nlohmann::json::exception& e) {
+                throw std::runtime_error("Failed to extract required JSON fields: " + std::string(e.what()));
+            }
+            
+            // Send quit command
+            std::string quit_response = send_command_and_read_reply("quit");
+            std::cerr << "✓ Demo completed, server response to quit: " << quit_response << std::endl;
+            
+            // Display any final captured child output
+            handle_child();
+            display_and_clear_captured();
+            
+            // Close our end of the pipes
+            cmd_pipe.side_write().close();
+            resp_pipe.side_read().close();
+            
+            // Wait for server to exit
+            server_process.wait();
+            
+            if (server_process.exit_code() != 0) {
+                throw std::runtime_error("Server process exited with code: " +
+                                       std::to_string(server_process.exit_code()));
+            }
+            
+            std::cerr << "✓ Demo mode completed successfully\n";
+            
+        } catch (const std::exception& e) {
+            std::cerr << "✗ Demo mode failed: " << e.what() << "\n";
+            throw;
+        }
+    }
 };
 
 void print_usage(const std::string& program_name) {
@@ -641,7 +764,9 @@ void print_usage(const std::string& program_name) {
     std::cout << "  cleanup_exec_prog Optional path to clean_exec program for environment cleanup\n\n";
     std::cout << "Modes:\n";
     std::cout << "  test              Run automated ping/quit test (original behavior)\n";
-    std::cout << "  demo              Same as test mode\n";
+    std::cout << "  demo              Demo mode with submodes:\n";
+    std::cout << "                    - demo1/gdgp: Send get_dynamic_global_properties, parse JSON, extract values\n";
+    std::cout << "                    - (empty): Same as test mode\n";
     std::cout << "  cli               Interactive command-line interface\n\n";
     std::cout << "StdOutErr Modes:\n";
     std::cout << "  direct            Child output goes directly to terminal (default)\n";
@@ -659,9 +784,12 @@ void print_usage(const std::string& program_name) {
     std::cout << "  - Environment cleanup: Only HOME and USER environment variables are preserved\n\n";
     std::cout << "Examples:\n";
     std::cout << "  " << program_name << " test                         # Run test mode with defaults\n";
+    std::cout << "  " << program_name << " demo demo1                   # Run demo with get_dynamic_global_properties\n";
+    std::cout << "  " << program_name << " demo gdgp                    # Same as demo1\n";
     std::cout << "  " << program_name << " cli                          # Interactive CLI mode\n";
     std::cout << "  " << program_name << " test \"\" capture              # Test mode with captured child output\n";
-    std::cout << "  " << program_name << " cli \"\" hide ./stdpipe_serv   # CLI mode with hidden child output\n\n";
+    std::cout << "  " << program_name << " cli \"\" hide ./stdpipe_serv   # CLI mode with hidden child output\n";
+    std::cout << "  " << program_name << " demo demo1 -- --extra-arg    # Demo mode with extra args after '--'\n\n";
 }
 
 /**
@@ -693,40 +821,70 @@ int main(int argc, char* argv[]) {
             argvect.push_back(std::string(argv[i]));
         }
         
+        // Parse arguments - look for "--" separator
+        std::vector<std::string> main_args;
+        std::vector<std::string> command_args;
+        
+        // Find first "--" and split arguments
+        size_t separator_pos = argvect.size();  // Default to end if no "--" found
+        for (size_t i = 0; i < argvect.size(); ++i) {
+            if (argvect[i] == "--") {
+                separator_pos = i;
+                break;
+            }
+        }
+        
+        // Split arguments around "--"
+        for (size_t i = 0; i < separator_pos; ++i) {
+            main_args.push_back(argvect[i]);
+        }
+        for (size_t i = separator_pos + 1; i < argvect.size(); ++i) {
+            command_args.push_back(argvect[i]);
+        }
+        
         // Check for --help
-        if (argvect.size() > 1 && argvect.at(1) == "--help") {
-            print_usage(argvect.at(0));
+        if (main_args.size() > 1 && main_args.at(1) == "--help") {
+            print_usage(main_args.at(0));
             return 0;
         }
         
         // Check minimum arguments
-        if (argvect.size() < 2) {
+        if (main_args.size() < 2) {
             std::cerr << "Error: Missing required 'mode' argument\n\n";
-            print_usage(argvect.at(0));
+            print_usage(main_args.at(0));
             return 1;
         }
         
         std::cerr << "StdPipe Backend Controller starting...\n";
         
         // Parse new argument structure: <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]
-        std::string mode = argvect.at(1);
+        std::string mode = main_args.at(1);
         std::string submode = "";
         std::string stdouterr_str = "direct";
         std::string server_path = "./stdpipe_serv";
         std::string cleanup_exec_prog = "";
         
         // Parse optional arguments
-        if (argvect.size() > 2) {
-            submode = argvect.at(2);
+        if (main_args.size() > 2) {
+            submode = main_args.at(2);
         }
-        if (argvect.size() > 3) {
-            stdouterr_str = argvect.at(3);
+        if (main_args.size() > 3) {
+            stdouterr_str = main_args.at(3);
         }
-        if (argvect.size() > 4) {
-            server_path = argvect.at(4);
+        if (main_args.size() > 4) {
+            server_path = main_args.at(4);
         }
-        if (argvect.size() > 5) {
-            cleanup_exec_prog = argvect.at(5);
+        if (main_args.size() > 5) {
+            cleanup_exec_prog = main_args.at(5);
+        }
+        
+        // Store command_args for future use in command execution
+        if (!command_args.empty()) {
+            std::cerr << "Command arguments after '--':";
+            for (const auto& arg : command_args) {
+                std::cerr << " '" << arg << "'";
+            }
+            std::cerr << "\n";
         }
         
         // Parse stdouterr mode
@@ -763,13 +921,33 @@ int main(int argc, char* argv[]) {
             std::cerr << "Cleanup exec: " << cleanup_exec_prog << "\n";
         }
         
+        // Determine actual server path and arguments for demo modes
+        std::string actual_server_path = server_path;
+        std::vector<std::string> server_args;
+        
+        if (mode == "demo" && (submode == "demo1" || submode == "gdgp")) {
+            // Use cli_wallet for demo modes that need get_dynamic_global_properties
+            actual_server_path = "/home/joe/work/pay2exchange-core/use/programs/cli_wallet/cli_wallet";
+            server_args = {
+                "--server-rpc-endpoint=ws://127.0.0.1:1025",
+                "--chain-id", "08140cebb7723d4f8ffc6ce380b5dbb4c8cdd51b4e3c644d52af1918098a7643",
+                "--mutelog"  // Use --mutelog instead of --daemon to suppress logging but still enable pipe handling
+            };
+            // Note: --cmd-pipe XXX,YYY will be added dynamically with actual FD numbers
+        }
+        
         // Create controller and dispatch based on mode
-        StdPipeController controller(server_path, cleanup_exec_prog, stdouterr_mode, mode);
+        StdPipeController controller(actual_server_path, cleanup_exec_prog, stdouterr_mode, mode, server_args);
         
         if (mode == "test") {
             controller.run_test();
         } else if (mode == "demo") {
-            controller.run_test(); // Demo mode acts the same as test mode
+            // Check submodes for demo
+            if (submode == "demo1" || submode == "gdgp") {
+                controller.run_demo_gdgp();
+            } else {
+                controller.run_test(); // Default demo mode acts the same as test mode
+            }
         } else if (mode == "cli") {
             controller.run_cli_mode();
         }

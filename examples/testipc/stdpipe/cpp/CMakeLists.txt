@@ -36,9 +36,13 @@ endif()
 # Find Boost
 find_package(Boost REQUIRED COMPONENTS system filesystem iostreams program_options)
 
+# Find nlohmann/json
+find_package(nlohmann_json REQUIRED)
+
 # Add subdirectories for libraries
 add_subdirectory(libvalidcolor)
 add_subdirectory(libcmdformat)
+add_subdirectory(libstdpipeutil)
 
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
@@ -47,11 +51,11 @@ add_executable(clean_exec clean_exec.cpp envcleaner.cpp)
 add_executable(print_env_extra print_env_extra.cpp)
 
 # Link Boost and libraries to stdpipe_back and stdpipe_serv
-target_link_libraries(stdpipe_back ${Boost_LIBRARIES} ncurses libvalidcolor libcmdformat)
-target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS} libvalidcolor libcmdformat)
+target_link_libraries(stdpipe_back ${Boost_LIBRARIES} ncurses libvalidcolor libcmdformat libstdpipeutil nlohmann_json::nlohmann_json)
+target_include_directories(stdpipe_back PRIVATE ${Boost_INCLUDE_DIRS} libvalidcolor libcmdformat libstdpipeutil)
 
-target_link_libraries(stdpipe_serv ${Boost_LIBRARIES} libcmdformat)
-target_include_directories(stdpipe_serv PRIVATE ${Boost_INCLUDE_DIRS} libcmdformat)
+target_link_libraries(stdpipe_serv ${Boost_LIBRARIES} libcmdformat libstdpipeutil)
+target_include_directories(stdpipe_serv PRIVATE ${Boost_INCLUDE_DIRS} libcmdformat libstdpipeutil)
 
 # Link Boost to clean_exec
 target_link_libraries(clean_exec ${Boost_LIBRARIES})
