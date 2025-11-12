@@ -79,20 +79,22 @@ check_catch_all() {
 
 # Function to check for stop_exception catching
 check_stop_exception_catch() {
-		echo "Checking for forbidden stop_exception catching..."
-		
-		local matches=$(find "$PROJECT_ROOT" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | \
-				xargs grep -n "catch\s*.*stop_exception" 2>/dev/null || true)
-		
-		if [ -n "$matches" ]; then
-				echo -e "${RED}❌ SECURITY VIOLATION: Found forbidden stop_exception catching:${NC}"
-				echo "$matches"
-				echo -e "${RED}		→ stop_exception must NEVER be caught - it indicates security compromise!${NC}"
-				EXIT_CODE=1
-		else
-				echo -e "${GREEN}✅ No forbidden stop_exception catching found (*) with remark:${NC}"
-				echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
-		fi
+	echo "Checking for forbidden critical exception catching..."
+	
+	# More precise regex to match actual catch statements only
+	local matches=$(find "$PROJECT_ROOT" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | \
+		xargs grep -n "catch\s*(\s*.*stop_exception.*)\|catch\s*(\s*.*critical_do_not_catch_exception_stop.*)" 2>/dev/null || true)
+	
+	if [ -n "$matches" ]; then
+		echo -e "${RED}❌ SECURITY VIOLATION: Found forbidden critical exception catching:${NC}"
+		echo "$matches"
+		echo -e "${RED}	→ stop_exception and critical_do_not_catch_exception_stop must NEVER be caught!${NC}"
+		echo -e "${RED}	→ These indicate critical security/logic violations!${NC}"
+		EXIT_CODE=1
+	else
+		echo -e "${GREEN}✅ No forbidden critical exception catching found (*) with remark:${NC}"
+		echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
+	fi
 }
 
 # Function to check for other suspicious patterns

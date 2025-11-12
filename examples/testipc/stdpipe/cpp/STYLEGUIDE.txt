@@ -7,6 +7,11 @@ General notes:
 Follow identation as described in the .editorconfig file that is here or above (or few levels up).
 
 C++:
+- ident with TAB. 1 TAB is 2 spaces. On multi-line expression just add 1 TAB, do not try to align.
+- use no-braces if/loops only for very short expressions run inside, but in this case write the control and the inside in 1 line. if multi-line then you must use braces { } even if just 1 instruction inside
+- wrap at 120 column, do not exceed 140.
+- do not write trailing spaces. truncate empty lines (whitespace-only) to have nothing not even ident
+
 - standard C++17. (but C++14 for the BitShares project itself, including the FC sub-project/library in BitShares)
 - in general: support Linux first. Would be nice to gratis get support for Mac, Windows, BSD, if just choosing proper approach or lib (but not worse ones) will do it, but in other case if there would be more work to support some OSes then do it only if it takes like extra 1-2 instructions to support MacOS/BSD. Do not write support for Windows if it needs separate approach all together (unless a tiny 1-2 liner).
 -- as for the pipe (stdpipe) project: ignore supporting Windows. We might support BSD in future, or perhaps even Mac.
@@ -46,12 +51,8 @@ Limits (the Magical values) :
 - file names shold not exceed 200 characters (warn on 100) and disallow names that have control chars
 
 If something breaks in our expected chain of communication and execution: can't start program, child/parent dies (before it should) communication with it breakes, can not secure it (close FDs, remove or set ENV, etc) then we MUST ALWAYS abort (and complain loudly) do not ever continue in broken or unknown state.
-Provide/use top-level functions for it:
-1) error_broken(msg,...) - that will warn about things breaking in that way, and then must abort or otherwise quickly leave the program without further normal operation (just at most close some RAII stuff, log exiting) - check throw/cath patches to confirm that.
-2) error_recover(msg,...) - will warng about an error, but that is not indicating that things broken and that our logical chain of commands, or our security comands (even commands that "just" close FDs, clear files, chmod files, log things and so on).
-3) error_broken_or_test(test,msg,..) if value test (a boolean) is true then we throw error (as neede for unit tests, internal tests, LLM/AI tests etc), otherwise do as error_broken.
-4) warn_recover(msg,...) - warn about things that are out of ther ordinary but we can handle. also for the "warn" values of the limits.
-5) info_recover(msg,...) - just inform about things that outerwise might be an error or warning - some kinds of failure for example - but we expect them to happen normally - for example mkdir on directory that we expect already might be existing from previous use.
+Provide/use top-level functions (macros) for it:
+... see the eclu lib ...
 
 Double check failures, do not let innocent errors mask real serious errors - for example - if mkdir fails then it might be normal since dir already existed and we expected it might be there, but perhaps it failed due to real permission error (check errno and such, also double check dir exists now).
 

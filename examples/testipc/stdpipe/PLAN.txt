@@ -5,6 +5,9 @@ and a project implementing it in Rust in dir rs/ here.
 Both implementations should be doing the same thing and be compatible drop in replacements for each other
 (but do not rewrite the Rust project while working on C++ project or vice-versa without asking).
 
+For entire source code, also for bash files, python files, lua files, take general instructions, code style, ident/style, OS support, lib choices, rules for security considerations, same as apply from the C++ styleguide at cpp/STYLEGUIDE.txt
+although for python use other identation: with 4 spaces.
+
 Before working on this code also read STYLEGUIDE.txt (there can be one in each of rs/ and cpp/ subdir).
 
 From now on I describe how one project works (one implementation e.g. the C++ one) but this plans are the same for other implementations.

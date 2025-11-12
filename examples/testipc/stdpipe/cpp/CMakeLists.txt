@@ -192,12 +192,14 @@ find_package(nlohmann_json REQUIRED)
 add_subdirectory(libvalidcolor)
 add_subdirectory(libcmdformat)
 add_subdirectory(libstdpipeutil)
+add_subdirectory(libecul)
 
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
 add_executable(stdpipe_serv stdpipe_serv.cpp)
 add_executable(clean_exec clean_exec.cpp envcleaner.cpp)
 add_executable(print_env_extra print_env_extra.cpp)
+add_executable(ecul_test ecul_test.cpp)
 
 # Link Boost and libraries to stdpipe_back and stdpipe_serv
 target_link_libraries(stdpipe_back ${Boost_LIBRARIES} ncurses libvalidcolor libcmdformat libstdpipeutil nlohmann_json::nlohmann_json)
@@ -209,6 +211,10 @@ target_include_directories(stdpipe_serv PRIVATE ${Boost_INCLUDE_DIRS} libcmdform
 # Link Boost to clean_exec
 target_link_libraries(clean_exec ${Boost_LIBRARIES})
 target_include_directories(clean_exec PRIVATE ${Boost_INCLUDE_DIRS})
+
+# Link ECUL library to test
+target_link_libraries(ecul_test libecul)
+target_include_directories(ecul_test PRIVATE libecul)
 
 # Copy simple_test.sh to build directory
 configure_file(${CMAKE_SOURCE_DIR}/simple_test.sh ${CMAKE_CURRENT_BINARY_DIR}/simple_test.sh COPYONLY)
@@ -231,12 +237,12 @@ add_custom_target(copy_test_script
 # Add explicit "build_all" target that includes binaries, test script, and linting
 if(LINT_DEPENDENCIES)
 	add_custom_target(build_all
-		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra copy_test_script lint
+		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra ecul_test copy_test_script lint
 		COMMENT "Building all executables, copying test script, and running linters"
 	)
 else()
 	add_custom_target(build_all
-		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra copy_test_script
+		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra ecul_test copy_test_script
 		COMMENT "Building all executables and copying test script (linters not available)"
 	)
 endif()
@@ -312,12 +318,12 @@ add_custom_command(TARGET print_env_extra POST_BUILD
 # Create after_build virtual target that runs after all builds (including lint)
 if(LINT_DEPENDENCIES)
 	add_custom_target(after_build ALL
-		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra lint
+		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra ecul_test lint
 		COMMENT "✅ All executables built, installed, and linted"
 	)
 else()
 	add_custom_target(after_build ALL
-		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra
+		DEPENDS stdpipe_back stdpipe_serv clean_exec print_env_extra ecul_test
 		COMMENT "✅ All executables built and installed (linters not available)"
 	)
 endif()

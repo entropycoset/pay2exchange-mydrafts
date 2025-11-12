@@ -1,12 +1,14 @@
 First of, follow the STYLEGUIDE written for C++ from the cpp directory (../cpp/) especially the general instructions.
 
 Apply of course adjustments in Rust version.
+Keep same instructions for identation.
 
 In Rust as for choice of libraries - do it the usual way used in Rust, incuding cargos as needed, but
 - the less external deps the better
 - we should only use very well known, trusted, maintained ones! Warn loudly if we use not so solid/secure and sure cargo/lib/dependencies.
 
 Error Handling in Rust:
+- aim for Rust 1.80
 - Use Rust's standard Result<T, E> type for all fallible operations
 - Return Result<T, Error> from functions that can fail
 - Use proper error propagation with the ? operator
