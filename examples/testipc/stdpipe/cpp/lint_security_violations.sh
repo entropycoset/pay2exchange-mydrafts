@@ -69,8 +69,8 @@ check_catch_all() {
 				EXIT_CODE=1
 		else
 				if [ "$total_patterns" -gt 0 ]; then
-						echo -e "${GREEN}✅ No forbidden catch(...) patterns found${NC}"
-						echo -e "${YELLOW}	 (some code might ignore checks, git grep source for texts 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
+						echo -e "${GREEN}✅ No forbidden catch(...) patterns found (*) with remark:${NC}"
+						echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
 				else
 						echo -e "${GREEN}✅ No forbidden catch(...) patterns found${NC}"
 				fi
@@ -90,7 +90,8 @@ check_stop_exception_catch() {
 				echo -e "${RED}		→ stop_exception must NEVER be caught - it indicates security compromise!${NC}"
 				EXIT_CODE=1
 		else
-				echo -e "${GREEN}✅ No forbidden stop_exception catching found${NC}"
+				echo -e "${GREEN}✅ No forbidden stop_exception catching found (*) with remark:${NC}"
+				echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
 		fi
 }
 

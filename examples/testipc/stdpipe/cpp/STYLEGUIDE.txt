@@ -15,6 +15,8 @@ C++:
 -- in rare cases where we night tight control, e.g. the pipe code maybe, fork code maybe. we can use libc and C lang directly, but if boost does it as well and does not obscure/abstract too much then rahter use boost for new code
 -- boost libs
 -- as last resort: other external libs if no other way. Prefer ones that are very FOSS and work on Debian as well as Ubuntu, and good (less imporant) to also work on Mac, Windows, BSD.
+- we use C++ code linter. Ecluded code is marked UNSAFE_LINTER only lead-developer is allowed to do thate (bots must not)
+- do not do `catch(...)` and also do not catch `ecul::critical_do_not_catch_exception_stop` (rare exceptions exist)
 
 Write code that is short and mininmal, but handles all errors still.
 Sometimes simple code (not abstracted, no boilerplate) is more readable. But go for abstract/higherlevel (e.g. boost instead libc) if we need the high level to handle various complicated problesm and conditions or coner-cases or portability that we can't do easily.
