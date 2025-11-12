@@ -6,16 +6,42 @@
 #include <iostream>
 #include <cstdlib>
 #include <type_traits>
+#include <string_view>
+
+// ODR fallback for project name detection - user should define this in their code
+// If not defined, get_project_name() will return "unknown"
 
 namespace ecul {
+
+// Color support (integrated from libvalidcolor)
+enum class Color : int {
+    // Basic colors (0-7)
+    Black = 0, Red = 1, Green = 2, Yellow = 3,
+    Blue = 4, Magenta = 5, Cyan = 6, White = 7,
+    // Light/Bright colors (8-15)
+    LightBlack = 8, LightRed = 9, LightGreen = 10, LightYellow = 11,
+    LightBlue = 12, LightMagenta = 13, LightCyan = 14, LightWhite = 15,
+    // Special values
+    Default = -1, Reset = -2, Normal = -1
+};
+
+// Color initialization and text wrapper functions
+void init_colors();  // Must be called from main() before using colors
+bool is_colors_initialized();
+std::string colortxt(const std::string& txt, Color fg = Color::Default, Color bg = Color::Default);
+
+// Project and binary identification functions
+std::string get_project_name();
+std::string get_binary_name();
+std::string get_project_binary_prefix();
 
 // Code location structure
 struct codeplace {
     const char* file;
     int line;
-    
+
     codeplace(const char* f, int l) : file(f), line(l) {}
-    
+
     std::string to_string() const {
         std::string filename = file;
         size_t pos = filename.find_last_of("/\\");
@@ -35,12 +61,12 @@ private:
 public:
     critical_do_not_catch_exception_stop(const std::string& msg, const codeplace& loc)
         : m_message(msg), m_location(loc) {}
-    
+
     const char* what() const noexcept { return m_message.c_str(); }
     const codeplace& where() const noexcept { return m_location; }
 };
 
-// Logging functions
+// Enhanced logging functions with colors and project identification
 void log_abort(const std::string& message, const codeplace& location);
 void log_stop(const std::string& message, const codeplace& location);
 void log_erro(const std::string& message, const codeplace& location);
@@ -63,9 +89,9 @@ std::string extract_what_if_available(const T& exception) {
 // Helper function for ecul_erro_what
 template<typename ExceptionType>
 [[nodiscard]] ExceptionType create_logged_exception(ExceptionType&& exception, const codeplace& location) {
-    static_assert(std::is_base_of_v<std::exception, std::decay_t<ExceptionType>>, 
+    static_assert(std::is_base_of_v<std::exception, std::decay_t<ExceptionType>>,
                   "Exception must inherit from std::exception");
-    
+
     std::string what_msg = extract_what_if_available(exception);
     log_erro(what_msg, location);
     return std::forward<ExceptionType>(exception);
@@ -74,9 +100,9 @@ template<typename ExceptionType>
 // Helper function for ecul_erro_msg
 template<typename ExceptionType>
 [[nodiscard]] ExceptionType create_logged_exception_with_msg(const std::string& custom_msg, ExceptionType&& exception, const codeplace& location) {
-    static_assert(std::is_base_of_v<std::exception, std::decay_t<ExceptionType>>, 
+    static_assert(std::is_base_of_v<std::exception, std::decay_t<ExceptionType>>,
                   "Exception must inherit from std::exception");
-    
+
     std::string what_msg = extract_what_if_available(exception);
     std::string full_msg = custom_msg;
     if (!what_msg.empty() && what_msg != "[exception type has no .what() method]") {
