@@ -57,3 +57,15 @@ Insert various asserts. But use asserts that always run and keep them also on re
 Insert compilation static-asserts for assumptions that you make e.g. that given type will fit in other type.
 
 In fact, probably all errors will result in error_broken, perhaps outside of things left for unit tests where you can use error_broken_or_test.
+
+Error Handling in C++:
+- Use throwing exceptions as the primary error handling mechanism for normal operation
+- Exceptions should be caught at appropriate levels and handled or re-thrown as needed
+- For unit tests and testing code where we must detect failures programmatically, use error_broken_or_test() function instead of direct exceptions
+- The error_broken_or_test(test, msg, ...) function:
+  - If 'test' parameter is true: throws exception (needed for unit tests to detect failures)
+  - If 'test' parameter is false: calls error_broken() to abort program (normal operation)
+- Always use RAII and proper exception safety (basic guarantee minimum, strong guarantee preferred)
+- Destructors should never throw exceptions
+- Use appropriate exception types: std::runtime_error, std::invalid_argument, etc.
+- In catch blocks, clean up resources properly before re-throwing or handling

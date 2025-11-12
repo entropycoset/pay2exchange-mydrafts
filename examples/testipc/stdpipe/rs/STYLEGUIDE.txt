@@ -5,3 +5,28 @@ Apply of course adjustments in Rust version.
 In Rust as for choice of libraries - do it the usual way used in Rust, incuding cargos as needed, but
 - the less external deps the better
 - we should only use very well known, trusted, maintained ones! Warn loudly if we use not so solid/secure and sure cargo/lib/dependencies.
+
+Error Handling in Rust:
+- Use Rust's standard Result<T, E> type for all fallible operations
+- Return Result<T, Error> from functions that can fail
+- Use proper error propagation with the ? operator
+- Prefer explicit error handling over panics:
+  - Use .unwrap() only in test code, examples, or when failure truly indicates a programming error
+  - Use .expect("descriptive message") when you need to panic with context
+  - Use .unwrap_or(), .unwrap_or_else(), or .unwrap_or_default() for recovery patterns
+- For the equivalent of C++'s error_broken_or_test():
+  - In normal operation: return Err(error) and let caller handle appropriately
+  - In test code: use .unwrap() or .expect() to panic on errors for test failure detection
+  - Consider using assert! macros in tests for validation
+- Use anyhow::Error or similar for application-level error handling
+- Use thiserror for library-level custom error types when needed
+- Always handle or explicitly ignore Result values (use let _ = ... if intentionally ignoring)
+- Use proper RAII patterns with Drop trait for resource cleanup
+- Match on Result explicitly when different error types need different handling:
+  ```rust
+  match result {
+      Ok(value) => // handle success,
+      Err(error) => // handle error appropriately,
+  }
+  ```
+- For timeout and validation scenarios, return appropriate error variants that can be matched by callers
