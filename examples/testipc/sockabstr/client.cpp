@@ -32,7 +32,9 @@ bool is_myapp_process(const std::string& pid, uid_t myuid) {
 bool try_talk(boost::asio::io_context& io, uid_t uid, const std::string& pid) {
     datagram_protocol::socket sock(io);
     boost::system::error_code ec;
-    sock.open(ec);
+
+    // FIXED: open with protocol + error_code
+    sock.open(datagram_protocol(), ec);
     if (ec) {
         throw std::runtime_error("Failed to open socket: " + ec.message());
     }
@@ -65,6 +67,7 @@ bool try_talk(boost::asio::io_context& io, uid_t uid, const std::string& pid) {
     std::cerr << "Warning: timeout waiting for reply from PID " << pid << "\n";
     return false;
 }
+
 
 int main() {
     try {
