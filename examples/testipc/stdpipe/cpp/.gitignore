@@ -1,0 +1,10 @@
+clean_exec
+wallet.json
+lib*/*.a
+
+lib*/cmake_install.cmake
+lib*/CMakeFiles/
+lib*/Makefile
+
+
+
