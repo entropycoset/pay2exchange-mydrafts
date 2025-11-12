@@ -62,14 +62,21 @@ enum class SpacingFormat {
 // Global logging settings class with thread-safe access
 class LogSettings {
 private:
-    mutable std::mutex settings_mutex;
-    DateFormat date_format = DateFormat::long_date;
-    TimeFormat time_format = TimeFormat::with_sub;
-    RuntimeFormat runtime_format = RuntimeFormat::none;
-    ProgramNameFormat program_name_format = ProgramNameFormat::prefer_name;
-    int line_width = -1; // -1 means no setw
-    SpacingFormat spacing_format = SpacingFormat::wide;
-    std::chrono::steady_clock::time_point program_start_time = std::chrono::steady_clock::now();
+	mutable std::mutex settings_mutex;
+	DateFormat date_format = DateFormat::long_date;
+	TimeFormat time_format = TimeFormat::with_sub;
+	RuntimeFormat runtime_format = RuntimeFormat::none;
+	ProgramNameFormat program_name_format = ProgramNameFormat::prefer_name;
+	int line_width = -1; // -1 means no setw
+	SpacingFormat spacing_format = SpacingFormat::wide;
+	std::chrono::steady_clock::time_point program_start_time = std::chrono::steady_clock::now();
+	
+	// Program icon settings
+	std::string program_icon = "";
+	bool program_icon_usecolor = false;
+	int program_icon_fg = static_cast<int>(Color::Default);
+	int program_icon_bg = static_cast<int>(Color::Default);
+	bool program_icon_show = false;
 
 public:
     // Getters with mutex protection
@@ -104,14 +111,40 @@ public:
     }
 
     std::chrono::steady_clock::time_point get_program_start_time() const {
-        std::lock_guard<std::mutex> lock(settings_mutex);
-        return program_start_time;
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_start_time;
     }
-
+   
+    // Program icon getters
+    std::string get_program_icon() const {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_icon;
+    }
+   
+    bool get_program_icon_usecolor() const {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_icon_usecolor;
+    }
+   
+    int get_program_icon_fg() const {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_icon_fg;
+    }
+   
+    int get_program_icon_bg() const {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_icon_bg;
+    }
+   
+    bool get_program_icon_show() const {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	return program_icon_show;
+    }
+   
     // Setters with mutex protection
     void set_date_format(DateFormat format) {
-        std::lock_guard<std::mutex> lock(settings_mutex);
-        date_format = format;
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	date_format = format;
     }
 
     void set_time_format(TimeFormat format) {
@@ -139,10 +172,36 @@ public:
         spacing_format = format;
     }
 
+    // Program icon setters
+    void set_program_icon(const std::string& icon) {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_icon = icon;
+    }
+   
+    void set_program_icon_usecolor(bool use_color) {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_icon_usecolor = use_color;
+    }
+   
+    void set_program_icon_fg(int fg) {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_icon_fg = fg;
+    }
+   
+    void set_program_icon_bg(int bg) {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_icon_bg = bg;
+    }
+   
+    void set_program_icon_show(bool show) {
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_icon_show = show;
+    }
+   
     // Reset program start time (called at program start)
     void reset_program_start_time() {
-        std::lock_guard<std::mutex> lock(settings_mutex);
-        program_start_time = std::chrono::steady_clock::now();
+    	std::lock_guard<std::mutex> lock(settings_mutex);
+    	program_start_time = std::chrono::steady_clock::now();
     }
 };
 

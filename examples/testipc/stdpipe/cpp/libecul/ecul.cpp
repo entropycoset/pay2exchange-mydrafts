@@ -293,6 +293,21 @@ namespace {
         // Level part
         oss << major_space << "[" << level << "]";
 
+        // Program icon part - place before location if enabled
+        if (settings.get_program_icon_show()) {
+            std::string icon_text = settings.get_program_icon();
+            if (!icon_text.empty()) {
+                // Format icon with brackets and optional colors
+                std::string formatted_icon = "[" + icon_text + "]";
+                if (settings.get_program_icon_usecolor()) {
+                    formatted_icon = format_color_internal(formatted_icon,
+                                                         settings.get_program_icon_fg(),
+                                                         settings.get_program_icon_bg());
+                }
+                oss << major_space << formatted_icon;
+            }
+        }
+
         // Location part
         oss << major_space << "[" << location.to_string() << "]";
 

@@ -865,6 +865,13 @@ int main(int argc, char* argv[]) {
 		log_settings.set_program_name_format(ecul::ProgramNameFormat::prefer_bin);
 		log_settings.set_line_width(4);
 		log_settings.set_spacing_format(ecul::SpacingFormat::normal);
+		
+		// Configure program icon - light-blue background, white foreground
+		log_settings.set_program_icon(" BACKEND");
+		log_settings.set_program_icon_usecolor(true);
+		log_settings.set_program_icon_fg(static_cast<int>(ecul::Color::White));
+		log_settings.set_program_icon_bg(static_cast<int>(ecul::Color::LightBlue));
+		log_settings.set_program_icon_show(true);
 
 		try {
 				// First convert argv to safe vector
