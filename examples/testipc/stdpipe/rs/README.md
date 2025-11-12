@@ -2,6 +2,8 @@
 
 This is a Rust port of the C++ stdpipe programs, implementing inter-process communication using anonymous pipes and file descriptors.
 
+See PLAN.txt (here or one dir up) for important general overview and bigger-picture, and STYLEGUIDE.txt.
+
 ## Overview
 
 The project consists of two main binaries:

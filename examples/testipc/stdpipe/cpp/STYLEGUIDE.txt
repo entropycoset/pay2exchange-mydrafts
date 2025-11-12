@@ -1,0 +1,57 @@
+
+General notes:
+- if you are not working now on refactoring code - then do not rewrite already existing code, except the code you work on now and change now anyway, or right next to to small degree if needed. (Any work to refactor or improve code will be separate from other tasks).
+- it is good to produce short code, and short diff (changes to files) while accomplishing given task
+- code must be security oriented. Handle all possible problems, such as always check return values from functions that can fail and so on.
+
+Follow identation as described in the .editorconfig file that is here or above (or few levels up).
+
+C++:
+- standard C++17. (but C++14 for the BitShares project itself, including the FC sub-project/library in BitShares)
+- libs in order: 
+-- prefer to use std:: and C++ way (especially over C alterantives)
+-- in rare cases where we night tight control, e.g. the pipe code maybe, fork code maybe. we can use libc and C lang directly, but if boost does it as well and does not obscure/abstract too much then rahter use boost for new code
+-- boost libs
+-- other external libs if no other way. Prefer ones that are very FOSS and work on Debian as well as Ubuntu, and good (less imporant) to also work on Mac, Windows, BSD.
+
+Write code that is short and mininmal, but handles all errors still.
+Sometimes simple code (not abstracted, no boilerplate) is more readable. But go for abstract/higherlevel (e.g. boost instead libc) if we need the high level to handle various complicated problesm and conditions or coner-cases or portability that we can't do easily.
+How ever do not switch the already made decissions in already existing code (unless refactoring) about which libs to use and which approach (nower level libc vs boost), but if you see really good reason to change then warn about it and ask.
+
+Do defensive programming, write secure code.
+Always report speak up about secuirty problems, including not handled age cases.
+
+Always consider known security problems (follow in new code, warn and ask about existing code) also take into account :
+- files might be missing, programs might be not compiled, not working, might crash or fail, might also hang
+- operations, especially child/parent processes, might crash or migh also hang so also consider some timeouts
+- libc, system use, can final
+- files, anon pipes and sockets, web sockets - can be closed, might not work, fail or hang (block)
+- avoid programs for hanging forever. Reasonable max timeout should be e.g. 15 seconds. ***
+- important: integers can overflow in various ways. even doing range-checks can overflow. Also underflow etc. Also consider unsigned not fitting into signed (for varoius types).
+- always guard arrays, vectors etc against out of bounds access.
+- always expect all inputs/data, even from our own files/programs, to be possibly malicious in all possible ways.
+- do double checks, e.g. check data on read, but then in following code to use the data still guard against UB, out-of-bounds and such.
+- make sure strings are valid, e.g. file names. Guard against extreamly long strings (and also other buffers and memory see magic limits below)
+- guard against invalid strings or suspicious, e.g. containing strange characters, control chars, etc. Especially when passing out, passing to system, using as file names.
+
+Limits (the Magical values) :
+- TIMEOUT_STANDARD: timeout of operations: usually: 15 second max, 5 seconds normal (warn above).
+- TIMEOUT_EXT: 15 seconds max (warn above 5 seconds) - timeout of external programs: but if we wait for external programs, especially when we wait for the node/_serv program to start-up fully.
+- TIMEOUT_RPC: when we given a command to node/_serv (e.g. via pipe) then we already given important command which might have critical economical value. Let the task run for even 120 seconds before aborting it (but warn above above 5 seconds). Because aborting RPC command that might be blockchain/ecnonomy token in unknown state is very dangerous, log large "WARNING FATAL CRITICAL" and mentiuon aborting RPC command, in such case.
+- BUFFER SIZES: strings, rpc commands, files etc. should never exceeed 128 MB of size, warn on seing 10% of that value.
+- file names shold not exceed 200 characters (warn on 100) and disallow names that have control chars
+
+If something breaks in our expected chain of communication and execution: can't start program, child/parent dies (before it should) communication with it breakes, can not secure it (close FDs, remove or set ENV, etc) then we MUST ALWAYS abort (and complain loudly) do not ever continue in broken or unknown state.
+Provide/use top-level functions for it:
+1) error_broken(msg,...) - that will warn about things breaking in that way, and then must abort or otherwise quickly leave the program without further normal operation (just at most close some RAII stuff, log exiting) - check throw/cath patches to confirm that.
+2) error_recover(msg,...) - will warng about an error, but that is not indicating that things broken and that our logical chain of commands, or our security comands (even commands that "just" close FDs, clear files, chmod files, log things and so on).
+3) error_broken_or_test(test,msg,..) if value test (a boolean) is true then we throw error (as neede for unit tests, internal tests, LLM/AI tests etc), otherwise do as error_broken.
+4) warn_recover(msg,...) - warn about things that are out of ther ordinary but we can handle. also for the "warn" values of the limits.
+5) info_recover(msg,...) - just inform about things that outerwise might be an error or warning - some kinds of failure for example - but we expect them to happen normally - for example mkdir on directory that we expect already might be existing from previous use.
+
+Double check failures, do not let innocent errors mask real serious errors - for example - if mkdir fails then it might be normal since dir already existed and we expected it might be there, but perhaps it failed due to real permission error (check errno and such, also double check dir exists now).
+
+Insert various asserts. But use asserts that always run and keep them also on realease builds, unlike standard cassert.
+Insert compilation static-asserts for assumptions that you make e.g. that given type will fit in other type.
+
+In fact, probably all errors will result in error_broken, perhaps outside of things left for unit tests where you can use error_broken_or_test.

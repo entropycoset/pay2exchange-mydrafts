@@ -1,0 +1,46 @@
+PLAN - the global overview of the big task "stdpipe".
+This is stdpipe - a tool for communicating with child process using anonymous pipe.
+This includes a project implementing it in C++ is dir cpp/ here such as stdpipe_back.cpp,
+and a project implementing it in Rust in dir rs/ here.
+Both implementations should be doing the same thing and be compatible drop in replacements for each other
+(but do not rewrite the Rust project while working on C++ project or vice-versa without asking).
+
+Before working on this code also read STYLEGUIDE.txt (there can be one in each of rs/ and cpp/ subdir).
+
+From now on I describe how one project works (one implementation e.g. the C++ one) but this plans are the same for other implementations.
+
+Use case is as such: we have a program called "backend" (sometimes "back" for short, as in "stdpipe_back") that spawns a child process called node (or "serv" like "server") and through anonymous pipe can send commands to it and read replies from it.
+In between them there is usually a clean_exec program that cleans the program conditions: closes open file-descriptors (FD) and removing ENV vars, then calling the node child.
+
+Real-world final use of this project might be:
+- a web-site (outside of our scope) that has commands such as "send currency tokens to user"
+- a backend library in C++ or Rust that is used and integrated into the web-site by taking fragments or libraries from here
+- they (the backend code) starts the binary clean_exec developed here to clean environment
+- the clean_exec starts a node program such as cli_wallet from Bitshares (with added support for anonymous pipes). Here we simulate/test it with the _serv (stdpipe_serv.cpp) program. It might copy code from here from our stdpipe_serv.cpp.
+
+Cmd line and giving commands:
+The backend program here (that is a test for the real external backend server) takes arguments telling it what tests/demonstrations to run. It includes configuration such as the location of the two binaries it will call (the clean_exec and the node/serv).
+From backed to the node/serv we must at least pass (as cmdline arguments) the two FD numbers of the pipe on which node will read rpc commands from backend, and FD of pipe where it will write back replies.
+Usually this is passed through the clean_exec program, that also firs takes extra arguments to decide which FD to close, which ENV to clean and so on.
+
+Example chain of commands should be as such:
+
+1) the backed program e.g.:
+./stdpipe_back demo demo1 capture ./stdpipe_serv ./clean_exec
+So that the _back program knows what demo to run (demo, with sub-mode "demo1" as handed in stdpipe_back.cpp code), knows how to process stdout/stderr etc from children ("capture") and has the file path to run the final node/server and well has (optional) the filepath to clean_exec binary
+
+2) (optional) previous step spawns the clean_exec program with options such as the FDs to whitelist, env whitelist/addlist, e.g.:
+./clean_exec ........
+
+3) previous step (optional clean_exec, or directly the backend) starts ./stdpipe_serv (or in final real use case starts the cli_wallet from BitShares program fork)
+gives it the FDs to use to read commands and write back, and other eneded options to make the node work.
+For example the real cli_wallet will need to know the chainid, and how to connect to blockchain node it needs to operate, and other options.
+./stdpipe_serv .........
+
+
+
+
+
+
+
+
