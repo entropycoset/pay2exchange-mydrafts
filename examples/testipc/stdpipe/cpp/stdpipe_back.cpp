@@ -865,7 +865,7 @@ int main(int argc, char* argv[]) {
 		log_settings.set_program_name_format(ecul::ProgramNameFormat::prefer_bin);
 		log_settings.set_line_width(4);
 		log_settings.set_spacing_format(ecul::SpacingFormat::normal);
-		
+
 		// Configure program icon - light-blue background, white foreground
 		log_settings.set_program_icon(" BACKEND");
 		log_settings.set_program_icon_usecolor(true);
@@ -991,6 +991,7 @@ int main(int argc, char* argv[]) {
 						// Use cli_wallet for demo modes that need get_dynamic_global_properties
 						actual_server_path = "/home/joe/work/pay2exchange-core/use/programs/cli_wallet/cli_wallet";
 						server_args = {
+						// RUNTIME change this runtime. TODO fixme FIXME
 								"--server-rpc-endpoint=ws://127.0.0.1:1025",
 								"--chain-id", "08140cebb7723d4f8ffc6ce380b5dbb4c8cdd51b4e3c644d52af1918098a7643",
 								"--mutelog"  // Use --mutelog instead of --daemon to suppress logging but still enable pipe handling
