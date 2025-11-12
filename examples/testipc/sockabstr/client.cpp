@@ -8,13 +8,19 @@
 #include <ctime>
 #include <stdexcept>
 
+const char* g_server_name = "myapp";
+
 using boost::asio::local::datagram_protocol;
 
 bool is_myapp_process(const std::string& pid, uid_t myuid) {
+		std::cout<<"Scanning process pid="<<pid<<"\n";
     std::ifstream comm("/proc/" + pid + "/comm");
     std::string name;
     if (!(comm >> name)) return false;
-    if (name != "myapp") return false;
+    if (name !=  g_server_name) return false;
+
+
+		std::cout<<"Scanning process pid="<<pid<<"  MATCHING NAME?\n";
 
     std::ifstream status("/proc/" + pid + "/status");
     std::string line;
@@ -23,6 +29,7 @@ bool is_myapp_process(const std::string& pid, uid_t myuid) {
             std::istringstream iss(line.substr(4));
             uid_t real;
             iss >> real;
+						std::cout<<"Scan... real="<<real<<"  myuid="<<myuid<<"\n";
             return (real == myuid);
         }
     }
@@ -39,11 +46,20 @@ bool try_talk(boost::asio::io_context& io, uid_t uid, const std::string& pid) {
         throw std::runtime_error("Failed to open socket: " + ec.message());
     }
 
-    std::string name = std::string("\0myapp.") + std::to_string(uid) + "." + pid;
-    datagram_protocol::endpoint ep(name);
+    // Bind client socket to a unique abstract address so server can send replies
+    std::string client_name = std::string("\0client.") + std::to_string(uid) + "." + std::to_string(getpid()) + "." + std::to_string(std::time(nullptr));
+    datagram_protocol::endpoint client_ep(client_name);
+    sock.bind(client_ep, ec);
+    if (ec) {
+        std::cerr << "Warning: failed to bind client socket: " << ec.message() << "\n";
+        return false;
+    }
+
+    std::string server_name = std::string("\0myapp.") + std::to_string(uid) + "." + pid;
+    datagram_protocol::endpoint server_ep(server_name);
 
     std::string msg = "Hi;USER=" + std::to_string(uid) + ";";
-    sock.send_to(boost::asio::buffer(msg), ep, 0, ec);
+    sock.send_to(boost::asio::buffer(msg), server_ep, 0, ec);
     if (ec) {
         std::cerr << "Warning: failed to send: " << ec.message() << "\n";
         return false;
