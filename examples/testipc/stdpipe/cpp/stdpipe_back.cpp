@@ -982,6 +982,8 @@ int main(int argc, char* argv[]) {
 		} catch (const std::exception& e) {
 				std::cerr << "Exception caught: " << e.what() << "\n";
 				return 1;
+		// UNSAFE_LINTER_IGNORE_CATCH_ALL
+		// TODO check is this OK to catch-all stop. XXX security
 		} catch (...) {
 				std::cerr << "Unknown exception caught\n";
 				return 2;

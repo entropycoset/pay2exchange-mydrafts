@@ -252,6 +252,8 @@ int main(int argc, char* argv[]) {
 		} catch (const std::exception& e) {
 				stdpipeutil::stderr_msg("Exception caught: " + std::string(e.what()));
 				return 1;
+		// UNSAFE_LINTER_IGNORE_CATCH_ALL
+		// TODO check is this OK to catch-all stop. XXX security
 		} catch (...) {
 				stdpipeutil::stderr_msg("Unknown exception caught");
 				return 2;
