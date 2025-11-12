@@ -6,7 +6,11 @@ General notes:
 
 Follow identation as described in the .editorconfig file that is here or above (or few levels up).
 
+Tools:
+- when getting data from git then for this command set pager=cat to avoid git hanging in visual editor
+
 C++:
+- build with -j 8
 - ident with TAB. 1 TAB is 2 spaces. On multi-line expression just add 1 TAB, do not try to align.
 - use no-braces if/loops only for very short expressions run inside, but in this case write the control and the inside in 1 line. if multi-line then you must use braces { } even if just 1 instruction inside
 - wrap at 120 column, do not exceed 140.
