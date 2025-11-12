@@ -31,7 +31,7 @@ void test_project_identification() {
     std::cout << "=== Test: Project Identification ===" << std::endl;
     std::cout << "Project name: " << ecul::get_project_name() << std::endl;
     std::cout << "Binary name: " << ecul::get_binary_name() << std::endl;
-    std::cout << "Full prefix: " << ecul::get_project_binary_prefix() << std::endl;
+    std::cout << "Full prefix: {" << ecul::get_binary_name() << ", " << ecul::get_project_name() << "}" << std::endl;
     std::cout << "Project identification test completed.\n" << std::endl;
 }
 
@@ -144,13 +144,6 @@ int main(int argc, char* argv[]) {
             show_usage(argv[0]);
             return 1;
         }
-    } catch (const ecul::critical_do_not_catch_exception_stop& e) {
-        // This should normally NOT be caught, but for testing purposes we catch it here
-        std::cout << "\n!!! CRITICAL EXCEPTION CAUGHT (for testing only) !!!" << std::endl;
-        std::cout << "Exception message: " << e.what() << std::endl;
-        std::cout << "Exception location: " << e.where().to_string() << std::endl;
-        std::cout << "In production, this exception should propagate to main!" << std::endl;
-        return 2;
     } catch (const std::exception& e) {
         std::cout << "Unexpected exception: " << e.what() << std::endl;
         return 3;

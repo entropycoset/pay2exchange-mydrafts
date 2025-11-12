@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <type_traits>
 #include <string_view>
+#include <mutex>
+#include <chrono>
 
 // ODR fallback for project name detection - user should define this in their code
 // If not defined, get_project_name() will return "unknown"
@@ -24,6 +26,131 @@ enum class Color : int {
     // Special values
     Default = -1, Reset = -2, Normal = -1
 };
+
+// Logging settings enums
+enum class DateFormat {
+    long_date,    // YYYY-MM-DD (as current)
+    no_date       // no date shown
+};
+
+enum class TimeFormat {
+    with_sub,     // HH:MM:SS.mmm (as current)
+    normal,       // HH:MM:SS
+    short_time,   // HH:MM (renamed from 'short' to avoid keyword conflict)
+    none          // no time shown
+};
+
+enum class RuntimeFormat {
+    none,         // no runtime shown
+    seconds,      // show seconds since start
+    ms,           // show milliseconds .000 to .999
+    high          // show 6 digits precision sub-second
+};
+
+enum class ProgramNameFormat {
+    prefer_name,  // show configured manual name, fallback to prefer_bin
+    prefer_bin,   // show bin name from /proc/, fallback to prefer_name
+    both          // show both if possible
+};
+
+enum class SpacingFormat {
+    wide,         // as current (spaces between all components)
+    normal,       // skip spaces between major components
+    compact       // also skip spaces inside components
+};
+
+// Global logging settings class with thread-safe access
+class LogSettings {
+private:
+    mutable std::mutex settings_mutex;
+    DateFormat date_format = DateFormat::long_date;
+    TimeFormat time_format = TimeFormat::with_sub;
+    RuntimeFormat runtime_format = RuntimeFormat::none;
+    ProgramNameFormat program_name_format = ProgramNameFormat::prefer_name;
+    int line_width = -1; // -1 means no setw
+    SpacingFormat spacing_format = SpacingFormat::wide;
+    std::chrono::steady_clock::time_point program_start_time = std::chrono::steady_clock::now();
+
+public:
+    // Getters with mutex protection
+    DateFormat get_date_format() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return date_format;
+    }
+    
+    TimeFormat get_time_format() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return time_format;
+    }
+
+    RuntimeFormat get_runtime_format() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return runtime_format;
+    }
+
+    ProgramNameFormat get_program_name_format() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return program_name_format;
+    }
+
+    int get_line_width() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return line_width;
+    }
+
+    SpacingFormat get_spacing_format() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return spacing_format;
+    }
+
+    std::chrono::steady_clock::time_point get_program_start_time() const {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        return program_start_time;
+    }
+
+    // Setters with mutex protection
+    void set_date_format(DateFormat format) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        date_format = format;
+    }
+
+    void set_time_format(TimeFormat format) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        time_format = format;
+    }
+
+    void set_runtime_format(RuntimeFormat format) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        runtime_format = format;
+    }
+
+    void set_program_name_format(ProgramNameFormat format) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        program_name_format = format;
+    }
+
+    void set_line_width(int width) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        line_width = width;
+    }
+
+    void set_spacing_format(SpacingFormat format) {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        spacing_format = format;
+    }
+
+    // Reset program start time (called at program start)
+    void reset_program_start_time() {
+        std::lock_guard<std::mutex> lock(settings_mutex);
+        program_start_time = std::chrono::steady_clock::now();
+    }
+};
+
+// Global settings instance
+LogSettings& get_log_settings();
+
+// Initialize logging settings with program start time
+void init_logging_settings();
 
 // Color initialization and text wrapper functions
 void init_colors();  // Must be called from main() before using colors

@@ -227,7 +227,16 @@ void print_usage(const std::string& program_name) {
 int main(int argc, char* argv[]) {
 		// Initialize ECUL colors for thread-safe logging
 		ecul::init_colors();
-		
+
+		// Configure default ECUL logging settings
+		auto& log_settings = ecul::get_log_settings();
+		log_settings.set_date_format(ecul::DateFormat::no_date);
+		log_settings.set_time_format(ecul::TimeFormat::short_time);
+		log_settings.set_runtime_format(ecul::RuntimeFormat::ms);
+		log_settings.set_program_name_format(ecul::ProgramNameFormat::prefer_bin);
+		log_settings.set_line_width(4);
+		log_settings.set_spacing_format(ecul::SpacingFormat::normal);
+
 		try {
 				// First convert argv to safe vector
 				std::vector<std::string> argvect;

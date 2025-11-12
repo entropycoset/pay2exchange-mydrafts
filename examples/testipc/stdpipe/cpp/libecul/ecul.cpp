@@ -7,8 +7,15 @@
 #include <unistd.h>
 #include <atomic>
 #include <mutex>
+#include <iomanip>
 
 namespace ecul {
+
+// Global settings instance with thread-safe singleton pattern
+LogSettings& get_log_settings() {
+    static LogSettings instance;
+    return instance;
+}
 
 namespace {
     // Color detection and formatting - thread-safe globals
@@ -55,17 +62,123 @@ namespace {
         return "\033[" + seq.str() + "m" + txt + "\033[0m";
     }
 
-    // Helper function to get current timestamp
-    std::string get_timestamp() {
-        auto now = std::chrono::system_clock::now();
-        auto time_t = std::chrono::system_clock::to_time_t(now);
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now.time_since_epoch()) % 1000;
+    // Helper function to format timestamp according to settings
+    std::string get_formatted_timestamp(const LogSettings& settings) {
+        std::ostringstream oss;
+        const auto spacing = (settings.get_spacing_format() == SpacingFormat::compact) ? "" : " ";
+
+        // Date part
+        if (settings.get_date_format() == DateFormat::long_date) {
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+            oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d");
+
+            // Add space between date and time if both are shown
+            if (settings.get_time_format() != TimeFormat::none) {
+                oss << spacing;
+            }
+        }
+
+        // Time part
+        if (settings.get_time_format() != TimeFormat::none) {
+            auto now = std::chrono::system_clock::now();
+            auto time_t = std::chrono::system_clock::to_time_t(now);
+
+            switch (settings.get_time_format()) {
+                case TimeFormat::with_sub: {
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now.time_since_epoch()) % 1000;
+                    oss << std::put_time(std::localtime(&time_t), "%H:%M:%S");
+                    oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+                    break;
+                }
+                case TimeFormat::normal:
+                    oss << std::put_time(std::localtime(&time_t), "%H:%M:%S");
+                    break;
+                case TimeFormat::short_time:
+                    oss << std::put_time(std::localtime(&time_t), "%H:%M");
+                    break;
+                case TimeFormat::none:
+                    // Already handled above
+                    break;
+            }
+        }
+
+        return oss.str();
+    }
+
+    // Helper function to format runtime according to settings
+    std::string get_formatted_runtime(const LogSettings& settings) {
+        if (settings.get_runtime_format() == RuntimeFormat::none) {
+            return "";
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = now - settings.get_program_start_time();
 
         std::ostringstream oss;
-        oss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-        oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+        switch (settings.get_runtime_format()) {
+            case RuntimeFormat::seconds: {
+                auto secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed);
+                oss << secs.count() << "s";
+                break;
+            }
+            case RuntimeFormat::ms: {
+                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed);
+                auto secs = ms.count() / 1000;
+                auto remainder_ms = ms.count() % 1000;
+                oss << secs << '.' << std::setfill('0') << std::setw(3) << remainder_ms;
+                break;
+            }
+            case RuntimeFormat::high: {
+                auto us = std::chrono::duration_cast<std::chrono::microseconds>(elapsed);
+                auto secs = us.count() / 1000000;
+                auto remainder_us = us.count() % 1000000;
+                oss << secs << '.' << std::setfill('0') << std::setw(6) << remainder_us;
+                break;
+            }
+            case RuntimeFormat::none:
+                // Already handled above
+                break;
+        }
         return oss.str();
+    }
+
+    // Helper function to format program name according to settings
+    std::string get_formatted_program_name(const LogSettings& settings) {
+        auto format = settings.get_program_name_format();
+        const auto spacing = (settings.get_spacing_format() == SpacingFormat::compact) ? "," : ", ";
+
+        switch (format) {
+            case ProgramNameFormat::prefer_name: {
+                std::string project_name = get_project_name();
+                if (project_name != "unknown") {
+                    return project_name;
+                } else {
+                    return get_binary_name();
+                }
+            }
+            case ProgramNameFormat::prefer_bin: {
+                std::string bin_name = get_binary_name();
+                if (bin_name != "unknown") {
+                    return bin_name;
+                } else {
+                    return get_project_name();
+                }
+            }
+            case ProgramNameFormat::both: {
+                std::string bin_name = get_binary_name();
+                std::string project_name = get_project_name();
+                if (bin_name != "unknown" && project_name != "unknown") {
+                    return bin_name + spacing + project_name;
+                } else if (bin_name != "unknown") {
+                    return bin_name;
+                } else {
+                    return project_name;
+                }
+            }
+        }
+        return "unknown";
     }
 }
 
@@ -78,6 +191,9 @@ void init_colors() {
         bool is_tty = isatty(STDERR_FILENO);
         colors_supported.store(is_tty);
         colors_initialized.store(true);
+
+        // Initialize logging settings with program start time
+        init_logging_settings();
     });
 }
 
@@ -127,6 +243,8 @@ std::string get_binary_name() {
         } else {
             cached_name = full_path;
         }
+    // UNSAFE_LINTER_IGNORE_CATCH_ALL
+    // TODO check is this OK to catch-all in binary name detection. XXX security
     } catch (...) {
         cached_name = "unknown";
     }
@@ -134,21 +252,53 @@ std::string get_binary_name() {
     return cached_name;
 }
 
-// Get project and binary prefix
-std::string get_project_binary_prefix() {
-    return "{" + get_binary_name() + ", " + get_project_name() + "}";
+// Initialize logging settings with program start time
+void init_logging_settings() {
+    auto& settings = get_log_settings();
+    settings.reset_program_start_time();
 }
 
 namespace {
-    // Helper function to format log message with project/binary prefix
+    // Helper function to format log message with configurable formatting
     std::string format_log_message(const std::string& level, const std::string& message,
                                  const codeplace& location) {
+        const auto& settings = get_log_settings();
         std::ostringstream oss;
-        oss << get_project_binary_prefix() << " "
-            << "[" << get_timestamp() << "] "
-            << "[" << level << "] "
-            << "[" << location.to_string() << "] "
-            << message;
+        
+        // Apply line width setting if specified
+        if (settings.get_line_width() > 0) {
+            oss << std::setw(settings.get_line_width());
+        }
+
+        // Determine spacing based on settings
+        const auto major_space = (settings.get_spacing_format() == SpacingFormat::normal ||
+                                 settings.get_spacing_format() == SpacingFormat::compact) ? "" : " ";
+
+        // Program name part
+        std::string program_part = "{" + get_formatted_program_name(settings) + "}";
+        oss << program_part;
+
+        // Timestamp part
+        std::string timestamp = get_formatted_timestamp(settings);
+        if (!timestamp.empty()) {
+            oss << major_space << "[" << timestamp << "]";
+        }
+
+        // Runtime part
+        std::string runtime = get_formatted_runtime(settings);
+        if (!runtime.empty()) {
+            oss << major_space << "[" << runtime << "]";
+        }
+
+        // Level part
+        oss << major_space << "[" << level << "]";
+
+        // Location part
+        oss << major_space << "[" << location.to_string() << "]";
+
+        // Message part
+        oss << major_space << message;
+
         return oss.str();
     }
 

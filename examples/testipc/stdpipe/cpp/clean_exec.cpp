@@ -128,9 +128,6 @@ int main_tests() {
 		ecul_info("=== FD Management Test Completed Successfully ===");
 		return 0;
 
-	} catch (const ecul::critical_do_not_catch_exception_stop& e) {
-		// Let critical exceptions propagate
-		throw;
 	} catch (const std::exception& e) {
 		ecul_log_erro("Test error: " + std::string(e.what()));
 		return 1;
@@ -365,9 +362,6 @@ int main_run(int argc, char* argv[]) {
 
 		return exit_code;
 
-	} catch (const ecul::critical_do_not_catch_exception_stop& e) {
-		// Let critical exceptions propagate
-		throw;
 	} catch (const std::exception& e) {
 		ecul_log_erro("CleanExecutor error: " + std::string(e.what()));
 		return 1;
@@ -377,6 +371,15 @@ int main_run(int argc, char* argv[]) {
 int main(int argc, char* argv[]) {
 	// Initialize ECUL colors early
 	ecul::init_colors();
+
+	// Configure default ECUL logging settings
+	auto& log_settings = ecul::get_log_settings();
+	log_settings.set_date_format(ecul::DateFormat::no_date);
+	log_settings.set_time_format(ecul::TimeFormat::short_time);
+	log_settings.set_runtime_format(ecul::RuntimeFormat::ms);
+	log_settings.set_program_name_format(ecul::ProgramNameFormat::prefer_bin);
+	log_settings.set_line_width(4);
+	log_settings.set_spacing_format(ecul::SpacingFormat::normal);
 
 	try {
 		// First convert argv to safe vector
@@ -409,10 +412,6 @@ int main(int argc, char* argv[]) {
 			throw ecul_erro_runtime("Unknown mode '" + mode + "'. Must be --tests, --run, or --help");
 		}
 
-	} catch (const ecul::critical_do_not_catch_exception_stop& e) {
-		// Critical exceptions should terminate the program
-		ecul_log_stop("Critical error: " + std::string(e.what()));
-		return 2;
 	} catch (const std::exception& e) {
 		ecul_log_erro("Program error: " + std::string(e.what()));
 		print_usage(argc > 0 ? argv[0] : "clean_exec");
