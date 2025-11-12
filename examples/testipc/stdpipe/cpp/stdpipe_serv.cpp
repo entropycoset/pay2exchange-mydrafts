@@ -14,6 +14,14 @@
 #include <cerrno>
 #include "libcmdformat/libcmdformat.hpp"
 #include "libstdpipeutil/libstdpipeutil.hpp"
+#include "libecul/ecul.hpp"
+
+// Project name override for ECUL library
+namespace ecul {
+	std::string get_project_name() {
+		return "StdPipeServApp";
+	}
+}
 
 namespace utils {
 
@@ -22,7 +30,7 @@ TInt parse_strict_integer(const std::string& input) {
 		static_assert(std::is_integral<TInt>::value, "TInt must be an integral type");
 
 		if (input.empty()) {
-				throw std::invalid_argument("Empty string");
+				ecul_stop("Empty string");
 		}
 
 		char* end = nullptr;
@@ -35,7 +43,7 @@ TInt parse_strict_integer(const std::string& input) {
 				std::string normalized = oss.str();
 
 				if (input != normalized && input != ("+" + normalized)) {
-						throw std::invalid_argument("Not normal integer string (junk besides the integer)");
+						ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				return value;
 		};
@@ -48,10 +56,10 @@ TInt parse_strict_integer(const std::string& input) {
 				unsigned long long raw = std::strtoull(input.c_str(), &end, 10);
 
 				if (*end != '\0') {
-						throw std::invalid_argument("Not normal integer string (junk besides the integer)");
+						ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				if (errno == ERANGE || raw > std::numeric_limits<TInt>::max()) {
-						throw std::out_of_range("Value out of range for unsigned type");
+						ecul_stop("Value out of range for unsigned type");
 				}
 
 				return normalize_and_compare(static_cast<TInt>(raw));
@@ -66,10 +74,10 @@ TInt parse_strict_integer(const std::string& input) {
 				long long raw = std::strtoll(input.c_str(), &end, 10);
 
 				if (*end != '\0') {
-						throw std::invalid_argument("Not normal integer string (junk besides the integer)");
+						ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				if (errno == ERANGE || raw < std::numeric_limits<TInt>::min() || raw > std::numeric_limits<TInt>::max()) {
-						throw std::out_of_range("Value out of range for signed type");
+						ecul_stop("Value out of range for signed type");
 				}
 
 				return normalize_and_compare(static_cast<TInt>(raw));
@@ -91,58 +99,55 @@ private:
 
 public:
 		StdPipeServer(int cmd_in_fd, int cmd_out_fd) {
-				stdpipeutil::stderr_msg("Program starting - StdPipe Server initializing with FDs: " +
+				ecul_log_info("Program starting - StdPipe Server initializing with FDs: " +
 																std::to_string(cmd_in_fd) + ", " + std::to_string(cmd_out_fd));
 
 				// Create boost::iostreams from native file descriptors
 				try {
 						cmd_in_file = std::make_unique<fd_stream_in>(cmd_in_fd, boost::iostreams::never_close_handle);
 						if (!cmd_in_file->is_open()) {
-								stdpipeutil::stderr_msg("Error: Failed to open command input pipe (FD " + std::to_string(cmd_in_fd) + ")");
-								throw std::runtime_error("Failed to open command input pipe");
+								ecul_stop("Failed to open command input pipe (FD " + std::to_string(cmd_in_fd) + ")");
 						}
 
 						cmd_out_file = std::make_unique<fd_stream_out>(cmd_out_fd, boost::iostreams::never_close_handle);
 						if (!cmd_out_file->is_open()) {
-								stdpipeutil::stderr_msg("Error: Failed to open command output pipe (FD " + std::to_string(cmd_out_fd) + ")");
-								throw std::runtime_error("Failed to open command output pipe");
+								ecul_stop("Failed to open command output pipe (FD " + std::to_string(cmd_out_fd) + ")");
 						}
 				} catch (const std::exception& e) {
-						stdpipeutil::stderr_msg("Error creating boost::iostreams from FDs: " + std::string(e.what()));
+						ecul_log_erro("Error creating boost::iostreams from FDs: " + std::string(e.what()));
 						throw;
 				}
 
-				stdpipeutil::stderr_msg("Program starting - StdPipe Server initialized successfully");
+				ecul_log_info("Program starting - StdPipe Server initialized successfully");
 		}
 
 		void send_reply(const std::string& reply) {
-				stdpipeutil::stderr_msg("Program sending reply: " + reply);
+				ecul_log_info("Program sending reply: " + reply);
 
 				// Use libcmdformat to encode the reply
 				std::string formatted_reply = libcmdformat::encode_command(reply, cmd_format);
 
 				cmd_out_file->write(formatted_reply.c_str(), formatted_reply.length());
 				if (cmd_out_file->fail()) {
-						stdpipeutil::stderr_msg("Error: Failed to write reply to command output pipe");
-						throw std::runtime_error("Failed to write to command output pipe");
+						ecul_stop("Failed to write reply to command output pipe");
 				}
 				cmd_out_file->flush();
 		}
 
 		void main_loop() {
 				while (true) {
-						stdpipeutil::stderr_msg("Program waiting for command...");
+						ecul_log_info("Program waiting for command...");
 
 						try {
 								// Use libcmdformat to decode the command
 								std::string command = libcmdformat::decode_command(*cmd_in_file, cmd_format);
 
-								stdpipeutil::stderr_msg("Program getting a command: '" + command + "'");
+								ecul_log_info("Program getting a command: '" + command + "'");
 
 								if (command == "ping") {
 										send_reply("pong");
 								} else if (command == "quit") {
-										stdpipeutil::stderr_msg("Program received quit command - exiting loop");
+										ecul_log_info("Program received quit command - exiting loop");
 										send_reply("goodbye");
 										break;
 								} else if (command.substr(0, 6) == "sleep ") {
@@ -162,63 +167,73 @@ public:
 														continue;
 												}
 
-												stdpipeutil::stderr_msg("Program sleeping for " + std::to_string(milliseconds) + " milliseconds");
+												ecul_log_info("Program sleeping for " + std::to_string(milliseconds) + " milliseconds");
 												std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
-												stdpipeutil::stderr_msg("Program finished sleeping");
+												ecul_log_info("Program finished sleeping");
 
 												send_reply("slept " + std::to_string(milliseconds) + " ms");
 										} catch (const std::exception& e) {
-												stdpipeutil::stderr_msg("Error parsing sleep parameter: " + std::string(e.what()));
+												ecul_log_erro("Error parsing sleep parameter: " + std::string(e.what()));
 												send_reply("invalid sleep parameter: " + std::string(e.what()));
 										}
 								} else {
-										stdpipeutil::stderr_msg("Unknown command received: '" + command + "'");
+										ecul_log_warn("Unknown command received: '" + command + "'");
 										send_reply("command unknown");
 								}
 						} catch (const std::exception& e) {
-								stdpipeutil::stderr_msg("Error reading/decoding command: " + std::string(e.what()));
+								ecul_log_erro("Error reading/decoding command: " + std::string(e.what()));
 								// Check if it's EOF or a real error
 								if (cmd_in_file->eof()) {
-										stdpipeutil::stderr_msg("Program detected end of input - exiting loop");
+										ecul_log_info("Program detected end of input - exiting loop");
 										break;
 								} else {
 										// For other errors, we might want to continue or exit depending on the error
-										stdpipeutil::stderr_msg("Continuing after command decode error...");
+										ecul_log_info("Continuing after command decode error...");
 										continue;
 								}
 						}
 				}
 
-				stdpipeutil::stderr_msg("Program exiting main loop");
+				ecul_log_info("Program exiting main loop");
 		}
 };
 
 void print_usage(const std::string& program_name) {
-		std::cout << "StdPipe Server\n\n";
-		std::cout << "Usage: " << program_name << " <cmd_in_fd> <cmd_out_fd>\n\n";
-		std::cout << "Arguments:\n";
-		std::cout << "	cmd_in_fd		 File descriptor number for command input pipe (required)\n";
-		std::cout << "	cmd_out_fd	 File descriptor number for command output pipe (required)\n\n";
-		std::cout << "Description:\n";
-		std::cout << "	Server process that communicates via anonymous pipes using the provided\n";
-		std::cout << "	file descriptors. Typically spawned by stdpipe_back controller.\n\n";
-		std::cout << "Commands:\n";
-		std::cout << "	ping				 Responds with 'pong'\n";
-		std::cout << "	sleep N			 Sleeps for N milliseconds (max 10000) then responds\n";
-		std::cout << "	quit				 Responds with 'goodbye' and exits\n";
-		std::cout << "	<unknown>		 Responds with 'command unknown'\n\n";
-		std::cout << "Note:\n";
-		std::cout << "	This program is usually not run directly but launched by stdpipe_back\n";
-		std::cout << "	which creates the pipes and passes the file descriptor numbers.\n\n";
+		// Use ECUL logging for usage information
+		ecul_log_info("StdPipe Server");
+		ecul_log_info("");
+		ecul_log_info("Usage: " + program_name + " <cmd_in_fd> <cmd_out_fd>");
+		ecul_log_info("");
+		ecul_log_info("Arguments:");
+		ecul_log_info("	cmd_in_fd		 File descriptor number for command input pipe (required)");
+		ecul_log_info("	cmd_out_fd	 File descriptor number for command output pipe (required)");
+		ecul_log_info("");
+		ecul_log_info("Description:");
+		ecul_log_info("	Server process that communicates via anonymous pipes using the provided");
+		ecul_log_info("	file descriptors. Typically spawned by stdpipe_back controller.");
+		ecul_log_info("");
+		ecul_log_info("Commands:");
+		ecul_log_info("	ping				 Responds with 'pong'");
+		ecul_log_info("	sleep N			 Sleeps for N milliseconds (max 10000) then responds");
+		ecul_log_info("	quit				 Responds with 'goodbye' and exits");
+		ecul_log_info("	<unknown>		 Responds with 'command unknown'");
+		ecul_log_info("");
+		ecul_log_info("Note:");
+		ecul_log_info("	This program is usually not run directly but launched by stdpipe_back");
+		ecul_log_info("	which creates the pipes and passes the file descriptor numbers.");
+		ecul_log_info("");
 }
 
 int main(int argc, char* argv[]) {
+		// Initialize ECUL colors for thread-safe logging
+		ecul::init_colors();
+		
 		try {
 				// First convert argv to safe vector
 				std::vector<std::string> argvect;
 				for (int i = 0; i < argc; ++i) {
 						if (argv[i] == nullptr) {
-								throw std::runtime_error("Null argv element at index " + std::to_string(i));
+								ecul_stop("Null argv element at index " + std::to_string(i));
 						}
 						argvect.push_back(std::string(argv[i]));
 				}
@@ -232,30 +247,29 @@ int main(int argc, char* argv[]) {
 				// Expect command line arguments for the two pipe file descriptors
 				if (argvect.size() != 3) {
 						print_usage(argvect.at(0));
-						std::cerr << "Error: Expected exactly 2 file descriptors for anonymous pipes\n";
-						throw std::runtime_error("Invalid command line arguments");
+						ecul_log_erro("Error: Expected exactly 2 file descriptors for anonymous pipes");
+						return 1;
 				}
 
 				int cmd_in_fd = utils::parse_strict_integer<int>(argvect.at(1));
 				int cmd_out_fd = utils::parse_strict_integer<int>(argvect.at(2));
-				stdpipeutil::stderr_msg("Will talk CMD on: cmd-in fd " + std::to_string(cmd_in_fd) + ", cmd-out fd " + std::to_string(cmd_out_fd));
+				ecul_log_info("Will talk CMD on: cmd-in fd " + std::to_string(cmd_in_fd) + ", cmd-out fd " + std::to_string(cmd_out_fd));
 
 				if (cmd_in_fd < 0 || cmd_out_fd < 0) {
-						stdpipeutil::stderr_msg("Error: Invalid file descriptor numbers");
-						throw std::runtime_error("Invalid file descriptor numbers");
+						ecul_stop("Invalid file descriptor numbers");
 				}
 
 				StdPipeServer server(cmd_in_fd, cmd_out_fd);
 				server.main_loop();
-				std::cout << stdpipeutil::make_reset_msg("Program exiting normally");
+				ecul_log_info("Program exiting normally");
 				return 0;
 		} catch (const std::exception& e) {
-				stdpipeutil::stderr_msg("Exception caught: " + std::string(e.what()));
+				ecul_log_erro("Exception caught: " + std::string(e.what()));
 				return 1;
 		// UNSAFE_LINTER_IGNORE_CATCH_ALL
 		// TODO check is this OK to catch-all stop. XXX security
 		} catch (...) {
-				stdpipeutil::stderr_msg("Unknown exception caught");
+				ecul_log_erro("Unknown exception caught");
 				return 2;
 		}
 }

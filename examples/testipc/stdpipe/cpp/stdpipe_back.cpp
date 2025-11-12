@@ -17,8 +17,16 @@
 #include "libvalidcolor/libvalidcolor.hpp"
 #include "libcmdformat/libcmdformat.hpp"
 #include "libstdpipeutil/libstdpipeutil.hpp"
+#include "libecul/ecul.hpp"
 
 namespace bp = boost::process;
+
+// Project name override for ECUL library
+namespace ecul {
+	std::string get_project_name() {
+		return "StdPipeBackApp";
+	}
+}
 
 
 enum class StdOutErrMode {
@@ -51,7 +59,7 @@ public:
 						// fail (e.g., if already closed) and we want to proceed with cleanup anyway
 						if (::close(m_fd) == -1) {
 								// Log but don't throw - we're in cleanup mode
-								std::cerr << "Warning: close() failed for FD " << m_fd << ": " << std::strerror(errno) << "\n";
+								ecul_log_warn("close() failed for FD " + std::to_string(m_fd) + ": " + std::strerror(errno));
 						}
 						m_owned = false;
 						m_fd = -1;
@@ -61,11 +69,18 @@ public:
 		bool is_open() const { return m_fd>=0; }
 
 		/// Get the file descriptor, it will be valid FD (otherwise we throw)
-		int get_fd() const { if (!is_open()) throw std::runtime_error("Tried to use invalid/closed FD"); return m_fd; }
+		int get_fd() const {
+			if (!is_open()) {
+				ecul_stop("Tried to use invalid/closed FD");
+			}
+			return m_fd;
+		}
 
 		// Set the file descriptor and ownership. The _fd must be valid (>=-1) otherwise throws and leave object unchanged
 		void set_fd(int _fd, bool _owned) {
-				if (!(_fd>=0)) throw std::runtime_error("Invalid fd being set");
+				if (!(_fd>=0)) {
+					ecul_stop("Invalid fd being set");
+				}
 				close(); // Close existing if owned
 				m_fd = _fd;
 				m_owned = _owned;
@@ -136,7 +151,7 @@ private:
 
 				if (duration >= warn_timeout) {
 						double seconds = duration.count() / 1000.0;
-						std::cerr << "Warning: operation took long " << operation_name << " - " << seconds << " seconds\n";
+						ecul_log_warn("operation took long " + operation_name + " - " + std::to_string(seconds) + " seconds");
 				}
 
 				return result;
@@ -149,14 +164,14 @@ public:
 				// Always use v1lenend format now that both client and server support it
 				m_cmdformat = CmdFormat::cmdformat_v1lenend;
 				if (server_path.empty()) {
-						throw std::runtime_error("Server path cannot be empty");
+						ecul_stop("Server path cannot be empty");
 				}
 
-				std::cerr << "StdPipeController: Starting server process: " << server_path << "\n";
+				ecul_log_info("StdPipeController: Starting server process: " + server_path);
 				if (!cleanup_exec_prog.empty()) {
-						std::cerr << "StdPipeController: Using cleanup_exec: " << cleanup_exec_prog << "\n";
+						ecul_log_info("StdPipeController: Using cleanup_exec: " + cleanup_exec_prog);
 				} else {
-						std::cerr << "StdPipeController: Warning: No cleanup_exec program specified - server will run in current environment\n";
+						ecul_log_warn("StdPipeController: No cleanup_exec program specified - server will run in current environment");
 				}
 
 				try {
@@ -176,17 +191,17 @@ public:
 								flags = stdpipeutil::check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_GETFL, 0), "fcntl F_GETFL");
 								stdpipeutil::check_syscall(fcntl(child_stderr_pipe.side_read().get_fd(), F_SETFL, flags | O_NONBLOCK), "fcntl F_SETFL");
 
-								std::cerr << "StdPipeController: Created secure anonymous pipes for stdout/stderr capture\n";
+								ecul_log_info("StdPipeController: Created secure anonymous pipes for stdout/stderr capture");
 						}
 
-						std::cerr << "StdPipeController: Created pipes - cmd_pipe[" << cmd_pipe.side_read().get_fd() << "," << cmd_pipe.side_write().get_fd()
-											<< "], resp_pipe[" << resp_pipe.side_read().get_fd() << "," << resp_pipe.side_write().get_fd() << "]\n";
+						ecul_log_info("StdPipeController: Created pipes - cmd_pipe[" + std::to_string(cmd_pipe.side_read().get_fd()) + "," + std::to_string(cmd_pipe.side_write().get_fd())
+											+ "], resp_pipe[" + std::to_string(resp_pipe.side_read().get_fd()) + "," + std::to_string(resp_pipe.side_write().get_fd()) + "]");
 
 						// Convert FD numbers to strings for passing as arguments
 						std::string cmd_fd_str = std::to_string(cmd_pipe.side_read().get_fd());
 						std::string resp_fd_str = std::to_string(resp_pipe.side_write().get_fd());
 
-						std::cerr << "StdPipeController: Will pass FDs " << cmd_fd_str << " and " << resp_fd_str << " to child process\n";
+						ecul_log_info("StdPipeController: Will pass FDs " + cmd_fd_str + " and " + resp_fd_str + " to child process");
 
 						// Prepare arguments vector
 						std::vector<std::string> all_args;
@@ -208,11 +223,11 @@ public:
 						}
 
 						// Debug: print all arguments
-						std::cerr << "StdPipeController: Starting with args:";
+						std::string args_str = "StdPipeController: Starting with args:";
 						for (const auto& arg : all_args) {
-								std::cerr << " '" << arg << "'";
+								args_str += " '" + arg + "'";
 						}
-						std::cerr << "\n";
+						ecul_log_info(args_str);
 
 						// Start the server process - setup redirection based on stdouterr mode
 						if (cleanup_exec_prog.empty()) {
@@ -263,7 +278,7 @@ public:
 														// Parent process - wrap pid in boost::process child
 														server_process = bp::child(pid);
 												} else {
-														throw std::runtime_error("Failed to fork child process");
+														ecul_stop("Failed to fork child process");
 												}
 												break;
 										}
@@ -287,8 +302,8 @@ public:
 								}
 								std::string clean_env_except = "HOME,USER";
 
-								std::cerr << "StdPipeController: Running via cleanup_exec with clean-fd-except=" << clean_fd_except
-													<< " and clean-env-except=" << clean_env_except << "\n";
+								ecul_log_info("StdPipeController: Running via cleanup_exec with clean-fd-except=" + clean_fd_except
+													+ " and clean-env-except=" + clean_env_except);
 
 								switch (m_stdouterr_mode) {
 										case StdOutErrMode::OutErrModeHide:
@@ -331,7 +346,7 @@ public:
 														// Parent process - wrap pid in boost::process child
 														server_process = bp::child(pid);
 												} else {
-														throw std::runtime_error("Failed to fork child process");
+														ecul_stop("Failed to fork child process");
 												}
 												break;
 										}
@@ -361,27 +376,27 @@ public:
 								child_stderr_pipe.side_write().close();
 						}
 
-						std::cerr << "StdPipeController: Created anonymous pipes - cmd input FD " << cmd_fd_str
-											<< ", response output FD " << resp_fd_str << "\n";
+						ecul_log_info("StdPipeController: Created anonymous pipes - cmd input FD " + cmd_fd_str
+											+ ", response output FD " + resp_fd_str);
 
 						// Give the child a moment to start and check if it's still running
 						std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 						if (!server_process.running()) {
-								throw std::runtime_error("Failed to start server process");
+								ecul_stop("Failed to start server process");
 						}
 
-						std::cerr << "StdPipeController: Server process started successfully\n";
+						ecul_log_info("StdPipeController: Server process started successfully");
 
 				} catch (const std::exception& e) {
-						std::cerr << "Error starting server process: " << e.what() << "\n";
+						ecul_log_erro("Error starting server process: " + std::string(e.what()));
 						throw;
 				}
 		}
 
 		~StdPipeController() {
 				if (server_process.running()) {
-						std::cerr << "StdPipeController: Terminating server process\n";
+						ecul_log_info("StdPipeController: Terminating server process");
 						server_process.terminate();
 						server_process.wait();
 				}
@@ -400,9 +415,8 @@ public:
 		}
 
 		void send_command(const std::string& command) {
-				// White text on dark-blue background for commands we send
-				std::cerr << colordetect::colorstr("StdPipeController: Sending command: " + command,
-																					colordetect::Color::White, colordetect::Color::Blue) << "\n";
+				// Use ECUL logging for command sending (info level)
+				ecul_log_info("StdPipeController: Sending command: " + command);
 
 				timed_pipe_operation("sending command", [&]() {
 						// Add timeout using select() for write operation
@@ -411,7 +425,7 @@ public:
 
 						int fd = cmd_pipe.side_write().get_fd();
 						if (fd < 0 || fd >= FD_SETSIZE) {
-								throw std::runtime_error("Invalid file descriptor for write select(): " + std::to_string(fd));
+								ecul_stop("Invalid file descriptor for write select(): " + std::to_string(fd));
 						}
 
 						FD_SET(fd, &write_fds);
@@ -423,27 +437,26 @@ public:
 						int select_result = stdpipeutil::check_syscall(select(fd + 1, nullptr, &write_fds, nullptr, &timeout_val), "select write");
 
 						if (select_result == 0) {
-								throw std::runtime_error("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
+								ecul_stop("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
 						}
 
 						if (!FD_ISSET(fd, &write_fds)) {
-								throw std::runtime_error("select() returned but FD is not ready for writing");
+								ecul_stop("select() returned but FD is not ready for writing");
 						}
 
 						// Use libcmdformat to encode the command
 						std::string formatted_command = libcmdformat::encode_command(command, m_cmdformat);
 
 						// Show raw encoded command being sent
-						std::cerr << colordetect::colorstr("StdPipeController: Sending RAW: " + formatted_command,
-																							colordetect::Color::LightCyan, colordetect::Color::Black) << "\n";
+						ecul_log_info("StdPipeController: Sending RAW: " + formatted_command);
 
 						ssize_t bytes_written = stdpipeutil::check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
 
 						if (bytes_written != static_cast<ssize_t>(formatted_command.length())) {
-								throw std::runtime_error("Partial write to command pipe: " + std::to_string(bytes_written) +
+								ecul_stop("Partial write to command pipe: " + std::to_string(bytes_written) +
 																				" of " + std::to_string(formatted_command.length()) + " bytes written");
 						}
-						std::cerr << "StdPipe...: written the command into pipe - done sending.\n";
+						ecul_log_info("StdPipe...: written the command into pipe - done sending.");
 
 						return bytes_written;
 				});
@@ -457,7 +470,7 @@ public:
 
 						int fd = resp_pipe.side_read().get_fd();
 						if (fd < 0 || fd >= FD_SETSIZE) {
-								throw std::runtime_error("Invalid file descriptor for select(): " + std::to_string(fd));
+								ecul_stop("Invalid file descriptor for select(): " + std::to_string(fd));
 						}
 
 						FD_SET(fd, &read_fds);
@@ -466,17 +479,17 @@ public:
 						timeout_val.tv_sec = max_timeout.count();
 						timeout_val.tv_usec = 0;
 
-						std::cout<<"StdPipe...: Reading the reply...\n";
+						ecul_log_info("StdPipe...: Reading the reply...");
 						int select_result = stdpipeutil::check_syscall(select(fd + 1, &read_fds, nullptr, nullptr, &timeout_val), "select");
-						std::cout<<"StdPipe...: Reading the reply - done...\n";
+						ecul_log_info("StdPipe...: Reading the reply - done...");
 
 						if (select_result == 0) {
-								throw std::runtime_error("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
+								ecul_stop("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
 						}
 
 						// Verify the FD is actually ready for reading
 						if (!FD_ISSET(fd, &read_fds)) {
-								throw std::runtime_error("select() returned but FD is not ready for reading");
+								ecul_stop("select() returned but FD is not ready for reading");
 						}
 
 						// Create a proper stream from the file descriptor and let libcmdformat handle the reading
@@ -484,21 +497,20 @@ public:
 						boost::iostreams::file_descriptor_source fd_source(fd, boost::iostreams::never_close_handle);
 						boost::iostreams::stream<boost::iostreams::file_descriptor_source> fd_stream(fd_source);
 
-						std::cout<<"StdPipe...: Reading the reply via stream...\n";
+						ecul_log_info("StdPipe...: Reading the reply via stream...");
 
 						// Let libcmdformat decode directly from the stream - this handles large responses correctly
 						std::string decoded_response = libcmdformat::decode_command(fd_stream, m_cmdformat);
 
-						std::cout<<"StdPipe...: Successfully decoded response of length: " << decoded_response.length() << "\n";
+						ecul_log_info("StdPipe...: Successfully decoded response of length: " + std::to_string(decoded_response.length()));
 
 						// Show a truncated version of the response for debugging (first 200 chars)
 						std::string display_response = decoded_response.length() > 200
 								? decoded_response.substr(0, 200) + "...[truncated]"
 								: decoded_response;
 
-						// Bright white on black background for decoded responses
-						std::cerr << colordetect::colorstr("StdPipeController: Decoded response: " + display_response,
-																							colordetect::Color::LightWhite, colordetect::Color::Black) << "\n";
+						// Log decoded response
+						ecul_log_info("StdPipeController: Decoded response: " + display_response);
 						return decoded_response;
 				});
 		}
@@ -541,30 +553,20 @@ public:
 				if (m_stdouterr_mode != StdOutErrMode::OutErrModeCapture) return;
 
 				if (!accumulated_stdout.empty()) {
-						// Light green for stdout
-						std::cout << colordetect::colorstr("[CHILD STDOUT] ", colordetect::Color::LightGreen)
-											<< colordetect::colorstr(accumulated_stdout, colordetect::Color::LightGreen);
-						if (accumulated_stdout.back() != '\n') {
-								// Reset color before newline
-								std::cout << colordetect::colorstr("", colordetect::Color::Default) << '\n';
-						}
+						// Use ECUL logging for child stdout
+						ecul_log_info("[CHILD STDOUT] " + accumulated_stdout);
 						accumulated_stdout.clear();
 				}
 				if (!accumulated_stderr.empty()) {
-						// Light red for stderr
-						std::cout << colordetect::colorstr("[CHILD STDERR] ", colordetect::Color::LightRed)
-											<< colordetect::colorstr(accumulated_stderr, colordetect::Color::LightRed);
-						if (accumulated_stderr.back() != '\n') {
-								// Reset color before newline
-								std::cout << colordetect::colorstr("", colordetect::Color::Default) << '\n';
-						}
+						// Use ECUL logging for child stderr
+						ecul_log_warn("[CHILD STDERR] " + accumulated_stderr);
 						accumulated_stderr.clear();
 				}
 		}
 
 		void run_cli_mode() {
-				std::cerr << "StdPipeController: Starting CLI interactive mode\n";
-				std::cout << "Interactive CLI mode. Type 'quit', 'abort', or 'abort2' to exit.\n";
+				ecul_log_info("StdPipeController: Starting CLI interactive mode");
+				ecul_log_info("Interactive CLI mode. Type 'quit', 'abort', or 'abort2' to exit.");
 
 				try {
 						std::string line;
@@ -578,25 +580,25 @@ public:
 
 								if (!std::getline(std::cin, line)) {
 										// EOF reached (Ctrl+D)
-										std::cout << "\nEOF reached, sending quit and exiting.\n";
+										ecul_log_info("EOF reached, sending quit and exiting.");
 										std::string response = send_command_and_read_reply("quit");
-										std::cout << "Server response: " << response << std::endl;
+										ecul_log_info("Server response: " + response);
 										break;
 								}
 
 								if (line == "quit") {
 										// Send quit, wait for response, then exit
 										std::string response = send_command_and_read_reply("quit");
-										std::cout << "Server response: " << response << std::endl;
+										ecul_log_info("Server response: " + response);
 										break;
 								} else if (line == "abort") {
 										// Send quit, then exit without waiting for response
 										send_command("quit");
-										std::cout << "Sent quit command, exiting without waiting for response.\n";
+										ecul_log_info("Sent quit command, exiting without waiting for response.");
 										break;
 								} else if (line == "abort2") {
 										// Exit immediately without sending quit - terminate server
-										std::cout << "Exiting immediately without sending quit.\n";
+										ecul_log_info("Exiting immediately without sending quit.");
 										if (server_process.running()) {
 												server_process.terminate();
 										}
@@ -605,9 +607,9 @@ public:
 										// Send the command and display response
 										try {
 												std::string response = send_command_and_read_reply(line);
-												std::cout << "Server response: " << response << std::endl;
+												ecul_log_info("Server response: " + response);
 										} catch (const std::exception& e) {
-												std::cerr << "Error communicating with server: " << e.what() << std::endl;
+												ecul_log_erro("Error communicating with server: " + std::string(e.what()));
 												break;
 										}
 								}
@@ -622,24 +624,25 @@ public:
 								server_process.wait();
 						}
 
-						std::cerr << "CLI mode completed\n";
+						ecul_log_info("CLI mode completed");
 
 				} catch (const std::exception& e) {
-						std::cerr << "CLI mode error: " << e.what() << "\n";
+						ecul_log_erro("CLI mode error: " + std::string(e.what()));
 						throw;
 				}
 		}
 
 		void run_test() {
-				std::cerr << "StdPipeController: Starting communication test\n";
+				ecul_log_info("StdPipeController: Starting communication test");
 
 				try {
 						// Test 1: Send ping, expect pong
 						std::string response1 = send_command_and_read_reply("ping");
 						if (response1 != "pong") {
-								throw std::runtime_error("Expected 'pong' but got: '" + response1 + "'");
+								ecul_log_erro("Expected 'pong' but got: '" + response1 + "'");
+								return;
 						}
-						std::cerr << "✓ Ping test passed\n";
+						ecul_log_info("✓ Ping test passed");
 
 						// Display any captured child output after ping test
 						handle_child();
@@ -651,9 +654,10 @@ public:
 						// Test 2: Send quit
 						std::string response2 = send_command_and_read_reply("quit");
 						if (response2 != "goodbye") {
-								throw std::runtime_error("Expected 'goodbye' but got: '" + response2 + "'");
+								ecul_log_erro("Expected 'goodbye' but got: '" + response2 + "'");
+								return;
 						}
-						std::cerr << "✓ Quit test passed\n";
+						ecul_log_info("✓ Quit test passed");
 
 						// Display any final captured child output
 						handle_child();
@@ -667,30 +671,31 @@ public:
 						server_process.wait();
 
 						if (server_process.exit_code() != 0) {
-								throw std::runtime_error("Server process exited with code: " +
+								ecul_log_erro("Server process exited with code: " +
 																			 std::to_string(server_process.exit_code()));
+								return;
 						}
 
-						std::cerr << "✓ All tests passed successfully\n";
+						ecul_log_info("✓ All tests passed successfully");
 
 				} catch (const std::exception& e) {
-						std::cerr << "✗ Test failed: " << e.what() << "\n";
+						ecul_log_erro("✗ Test failed: " + std::string(e.what()));
 						throw;
 				}
 		}
 
 		void run_demo_gdgp() {
-				std::cerr << "StdPipeController: Starting demo mode - get_dynamic_global_properties\n";
+				ecul_log_info("StdPipeController: Starting demo mode - get_dynamic_global_properties");
 
 				try {
 						set_timeouts(15);
 
 						// Give cli_wallet some time to connect to RPC endpoint
-						std::cerr << "StdPipeController: Waiting for cli_wallet to initialize and connect to RPC...\n";
+						ecul_log_info("StdPipeController: Waiting for cli_wallet to initialize and connect to RPC...");
 						std::this_thread::sleep_for(std::chrono::seconds(5));
 
 						// Send get_dynamic_global_properties command
-						std::cerr << "StdPipeController: Sending get_dynamic_global_properties command...\n";
+						ecul_log_info("StdPipeController: Sending get_dynamic_global_properties command...");
 						std::string response = send_command_and_read_reply("get_dynamic_global_properties");
 
 						// Parse JSON response
@@ -698,12 +703,13 @@ public:
 						try {
 								json_response = nlohmann::json::parse(response);
 						} catch (const nlohmann::json::parse_error& e) {
-								throw std::runtime_error("Failed to parse JSON response: " + std::string(e.what()));
+								ecul_log_erro("Failed to parse JSON response: " + std::string(e.what()));
+								return;
 						}
 
 						// Print nicely formatted JSON
-						std::cout << "JSON Response (formatted):\n";
-						std::cout << json_response.dump(4) << std::endl;
+						ecul_log_info("JSON Response (formatted):");
+						ecul_log_info(json_response.dump(4));
 
 						// Extract the 3 required values
 						try {
@@ -711,13 +717,14 @@ public:
 								auto head_block_id = json_response["head_block_id"].get<std::string>();
 								auto time = json_response["time"].get<std::string>();
 
-								std::cout << "\nExtracted values:\n";
-								std::cout << "head_block_number: " << head_block_number << std::endl;
-								std::cout << "head_block_id: " << head_block_id << std::endl;
-								std::cout << "time: " << time << std::endl;
+								ecul_log_info("Extracted values:");
+								ecul_log_info("head_block_number: " + std::to_string(head_block_number));
+								ecul_log_info("head_block_id: " + head_block_id);
+								ecul_log_info("time: " + time);
 
 						} catch (const nlohmann::json::exception& e) {
-								throw std::runtime_error("Failed to extract required JSON fields: " + std::string(e.what()));
+								ecul_log_erro("Failed to extract required JSON fields: " + std::string(e.what()));
+								return;
 						}
 
 
@@ -727,29 +734,31 @@ public:
 								try {
 										json_response = nlohmann::json::parse(response);
 								} catch (const nlohmann::json::parse_error& e) {
-										throw std::runtime_error("Failed to parse JSON response: " + std::string(e.what()));
+										ecul_log_erro("Failed to parse JSON response: " + std::string(e.what()));
+										return;
 								}
 
 								try {
-										std::cout << "Active Witnesses:\n";
+										ecul_log_info("Active Witnesses:");
 										const auto & data = json_response;
 										for (const auto& witness_id : data["active_witnesses"]) {
-												std::cout << witness_id << std::endl;
+												ecul_log_info(witness_id.get<std::string>());
 										}
 								} catch (const nlohmann::json::exception& e) {
-										throw std::runtime_error("Failed to extract required JSON fields: " + std::string(e.what()));
+										ecul_log_erro("Failed to extract required JSON fields: " + std::string(e.what()));
+										return;
 								}
 
 						}
 
 						// Send quit command - handle gracefully as cli_wallet may close pipe without formatted response
-						std::cerr << "StdPipeController: Sending quit command...\n";
+						ecul_log_info("StdPipeController: Sending quit command...");
 						try {
 								std::string quit_response = send_command_and_read_reply("quit");
-								std::cerr << "✓ Demo completed, server response to quit: " << quit_response << std::endl;
+								ecul_log_info("✓ Demo completed, server response to quit: " + quit_response);
 						} catch (const std::exception& e) {
 								// cli_wallet often closes the pipe without sending a proper formatted response when quitting
-								std::cerr << "✓ Demo completed (quit response not received - wallet closed connection, which is expected)\n";
+								ecul_log_info("✓ Demo completed (quit response not received - wallet closed connection, which is expected)");
 						}
 
 						// Display any final captured child output
@@ -764,56 +773,66 @@ public:
 						server_process.wait();
 
 						if (server_process.exit_code() != 0) {
-								throw std::runtime_error("Server process exited with code: " +
+								ecul_log_erro("Server process exited with code: " +
 																			 std::to_string(server_process.exit_code()));
+								return;
 						}
 
-						std::cerr << "✓ Demo mode completed successfully\n";
+						ecul_log_info("✓ Demo mode completed successfully");
 
 				} catch (const std::exception& e) {
-						std::cerr << "✗ Demo mode failed: " << e.what() << "\n";
+						ecul_log_erro("✗ Demo mode failed: " + std::string(e.what()));
 						throw;
 				}
 		}
 };
 
 void print_usage(const std::string& program_name) {
-		std::cout << "StdPipe Backend Controller\n\n";
-		std::cout << "Usage: " << program_name << " <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]\n\n";
-		std::cout << "Arguments:\n";
-		std::cout << "	mode							Operation mode: 'test', 'demo', or 'cli'\n";
-		std::cout << "	submode						Optional submode string (default: empty)\n";
-		std::cout << "	stdouterr					Child stdout/stderr handling: 'direct', 'hide', or 'capture' (default: direct)\n";
-		std::cout << "	server_path				Path to stdpipe_serv executable (default: ./stdpipe_serv)\n";
-		std::cout << "	cleanup_exec_prog Optional path to clean_exec program for environment cleanup\n\n";
-		std::cout << "Modes:\n";
-		std::cout << "	test							Run automated ping/quit test (original behavior)\n";
-		std::cout << "	demo							Demo mode with submodes:\n";
-		std::cout << "										- demo1/gdgp: Send get_dynamic_global_properties, parse JSON, extract values\n";
-		std::cout << "										- (empty): Same as test mode\n";
-		std::cout << "	cli								Interactive command-line interface\n\n";
-		std::cout << "StdOutErr Modes:\n";
-		std::cout << "	direct						Child output goes directly to terminal (default)\n";
-		std::cout << "	hide							Child output is redirected to /dev/null (hidden)\n";
-		std::cout << "	capture						Child output is captured and shown before CLI prompts\n\n";
-		std::cout << "CLI Mode Commands:\n";
-		std::cout << "	<any text>				Send command to server and display response\n";
-		std::cout << "	quit							Send quit to server, wait for response, then exit\n";
-		std::cout << "	abort							Send quit to server, then exit without waiting\n";
-		std::cout << "	abort2						Exit immediately without sending quit\n\n";
-		std::cout << "Description:\n";
-		std::cout << "	Creates anonymous pipes and starts a stdpipe_serv process to handle commands.\n";
-		std::cout << "	When cleanup_exec_prog is provided, the server runs in a cleaned environment:\n";
-		std::cout << "	- FD cleanup: Only stdin/stdout/stderr and the two pipe FDs are kept\n";
-		std::cout << "	- Environment cleanup: Only HOME and USER environment variables are preserved\n\n";
-		std::cout << "Examples:\n";
-		std::cout << "	" << program_name << " test													# Run test mode with defaults\n";
-		std::cout << "	" << program_name << " demo demo1										# Run demo with get_dynamic_global_properties\n";
-		std::cout << "	" << program_name << " demo gdgp										# Same as demo1\n";
-		std::cout << "	" << program_name << " cli													# Interactive CLI mode\n";
-		std::cout << "	" << program_name << " test \"\" capture							# Test mode with captured child output\n";
-		std::cout << "	" << program_name << " cli \"\" hide ./stdpipe_serv		# CLI mode with hidden child output\n";
-		std::cout << "	" << program_name << " demo demo1 -- --extra-arg		# Demo mode with extra args after '--'\n\n";
+		// Use ecul_log_info for usage information
+		ecul_log_info("StdPipe Backend Controller");
+		ecul_log_info("");
+		ecul_log_info("Usage: " + program_name + " <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]");
+		ecul_log_info("");
+		ecul_log_info("Arguments:");
+		ecul_log_info("	mode							Operation mode: 'test', 'demo', or 'cli'");
+		ecul_log_info("	submode						Optional submode string (default: empty)");
+		ecul_log_info("	stdouterr					Child stdout/stderr handling: 'direct', 'hide', or 'capture' (default: direct)");
+		ecul_log_info("	server_path				Path to stdpipe_serv executable (default: ./stdpipe_serv)");
+		ecul_log_info("	cleanup_exec_prog Optional path to clean_exec program for environment cleanup");
+		ecul_log_info("");
+		ecul_log_info("Modes:");
+		ecul_log_info("	test							Run automated ping/quit test (original behavior)");
+		ecul_log_info("	demo							Demo mode with submodes:");
+		ecul_log_info("										- demo1/gdgp: Send get_dynamic_global_properties, parse JSON, extract values");
+		ecul_log_info("										- (empty): Same as test mode");
+		ecul_log_info("	cli								Interactive command-line interface");
+		ecul_log_info("");
+		ecul_log_info("StdOutErr Modes:");
+		ecul_log_info("	direct						Child output goes directly to terminal (default)");
+		ecul_log_info("	hide							Child output is redirected to /dev/null (hidden)");
+		ecul_log_info("	capture						Child output is captured and shown before CLI prompts");
+		ecul_log_info("");
+		ecul_log_info("CLI Mode Commands:");
+		ecul_log_info("	<any text>				Send command to server and display response");
+		ecul_log_info("	quit							Send quit to server, wait for response, then exit");
+		ecul_log_info("	abort							Send quit to server, then exit without waiting");
+		ecul_log_info("	abort2						Exit immediately without sending quit");
+		ecul_log_info("");
+		ecul_log_info("Description:");
+		ecul_log_info("	Creates anonymous pipes and starts a stdpipe_serv process to handle commands.");
+		ecul_log_info("	When cleanup_exec_prog is provided, the server runs in a cleaned environment:");
+		ecul_log_info("	- FD cleanup: Only stdin/stdout/stderr and the two pipe FDs are kept");
+		ecul_log_info("	- Environment cleanup: Only HOME and USER environment variables are preserved");
+		ecul_log_info("");
+		ecul_log_info("Examples:");
+		ecul_log_info("	" + program_name + " test													# Run test mode with defaults");
+		ecul_log_info("	" + program_name + " demo demo1										# Run demo with get_dynamic_global_properties");
+		ecul_log_info("	" + program_name + " demo gdgp										# Same as demo1");
+		ecul_log_info("	" + program_name + " cli													# Interactive CLI mode");
+		ecul_log_info("	" + program_name + " test \"\" capture							# Test mode with captured child output");
+		ecul_log_info("	" + program_name + " cli \"\" hide ./stdpipe_serv		# CLI mode with hidden child output");
+		ecul_log_info("	" + program_name + " demo demo1 -- --extra-arg		# Demo mode with extra args after '--'");
+		ecul_log_info("");
 }
 
 /**
@@ -835,12 +854,15 @@ void print_usage(const std::string& program_name) {
  * - Proper isolation: The server runs in a cleaned environment
  */
 int main(int argc, char* argv[]) {
+		// Initialize ECUL colors for thread-safe logging
+		ecul::init_colors();
+		
 		try {
 				// First convert argv to safe vector
 				std::vector<std::string> argvect;
 				for (int i = 0; i < argc; ++i) {
 						if (argv[i] == nullptr) {
-								throw std::runtime_error("Null argv element at index " + std::to_string(i));
+								ecul_stop("Null argv element at index " + std::to_string(i));
 						}
 						argvect.push_back(std::string(argv[i]));
 				}
@@ -874,12 +896,12 @@ int main(int argc, char* argv[]) {
 
 				// Check minimum arguments
 				if (main_args.size() < 2) {
-						std::cerr << "Error: Missing required 'mode' argument\n\n";
+						ecul_log_erro("Error: Missing required 'mode' argument");
 						print_usage(main_args.at(0));
 						return 1;
 				}
 
-				std::cerr << "StdPipe Backend Controller starting...\n";
+				ecul_log_info("StdPipe Backend Controller starting...");
 
 				// Parse new argument structure: <mode> [submode] [stdouterr] [server_path] [cleanup_exec_prog]
 				std::string mode = main_args.at(1);
@@ -904,11 +926,11 @@ int main(int argc, char* argv[]) {
 
 				// Store command_args for future use in command execution
 				if (!command_args.empty()) {
-						std::cerr << "Command arguments after '--':";
+						std::string args_str = "Command arguments after '--':";
 						for (const auto& arg : command_args) {
-								std::cerr << " '" << arg << "'";
+								args_str += " '" + arg + "'";
 						}
-						std::cerr << "\n";
+						ecul_log_info(args_str);
 				}
 
 				// Parse stdouterr mode
@@ -920,29 +942,29 @@ int main(int argc, char* argv[]) {
 				} else if (stdouterr_str == "direct") {
 						stdouterr_mode = StdOutErrMode::OutErrModeDirect;
 				} else {
-						std::cerr << "Error: Invalid stdouterr mode '" << stdouterr_str << "'. Must be 'direct', 'hide', or 'capture'\n\n";
+						ecul_log_erro("Error: Invalid stdouterr mode '" + stdouterr_str + "'. Must be 'direct', 'hide', or 'capture'");
 						print_usage(argvect.at(0));
 						return 1;
 				}
 
 				// Validate mode
 				if (mode != "test" && mode != "demo" && mode != "cli") {
-						std::cerr << "Error: Invalid mode '" << mode << "'. Must be 'test', 'demo', or 'cli'\n\n";
+						ecul_log_erro("Error: Invalid mode '" + mode + "'. Must be 'test', 'demo', or 'cli'");
 						print_usage(argvect.at(0));
 						return 1;
 				}
 
 				// Validate server path is not empty
 				if (server_path.empty()) {
-						std::cerr << "Error: Server path cannot be empty\n\n";
+						ecul_log_erro("Error: Server path cannot be empty");
 						print_usage(argvect.at(0));
 						return 1;
 				}
 
-				std::cerr << "Mode: " << mode << ", Submode: '" << submode << "', StdOutErr: " << stdouterr_str << "\n";
-				std::cerr << "Server path: " << server_path << "\n";
+				ecul_log_info("Mode: " + mode + ", Submode: '" + submode + "', StdOutErr: " + stdouterr_str);
+				ecul_log_info("Server path: " + server_path);
 				if (!cleanup_exec_prog.empty()) {
-						std::cerr << "Cleanup exec: " << cleanup_exec_prog << "\n";
+						ecul_log_info("Cleanup exec: " + cleanup_exec_prog);
 				}
 
 				// Determine actual server path and arguments for demo modes
@@ -976,16 +998,16 @@ int main(int argc, char* argv[]) {
 						controller.run_cli_mode();
 				}
 
-				std::cerr << "StdPipe Backend Controller completed successfully\n";
+				ecul_log_info("StdPipe Backend Controller completed successfully");
 				return 0;
 
 		} catch (const std::exception& e) {
-				std::cerr << "Exception caught: " << e.what() << "\n";
+				ecul_log_erro("Exception caught: " + std::string(e.what()));
 				return 1;
 		// UNSAFE_LINTER_IGNORE_CATCH_ALL
 		// TODO check is this OK to catch-all stop. XXX security
 		} catch (...) {
-				std::cerr << "Unknown exception caught\n";
+				ecul_log_erro("Unknown exception caught");
 				return 2;
 		}
 }
