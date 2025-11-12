@@ -106,14 +106,17 @@ int a() { throw ecul::critical_do_not_catch_exception_stop }
 /// when a stop-error occured (one that means program should not resume normal operation) then run as: throw acul_log_stop(...msg...). it will throw excpetion ecul::critical_do_not_catch_exception_stop that should travel to top of main or other specialized place, as checked by linters if they apply
 #define ecul_stop(msg) ecul::create_stop_exception((msg), ECUL_HERE())
 
+// for normal errors that result in a throw - if such error occurs then do expression `throw ecul_erro_runtime(msg)` - it will log error, and you will throw it
 #define ecul_erro_runtime(msg) std::runtime_error(msg); ecul_log_erro(msg)
 
+// for normal errors that result in a throw - if such error occurs then do expression `throw ecul_erro_what(your_exception(msg...))` - where your_excpetion(...) forms any expression comptaible with .what() it will log error from .what of your object, and you will throw it
 #define ecul_erro_what(exception) ecul::create_logged_exception((exception), ECUL_HERE())
 
+// for normal errors that result in a throw - if such error occurs then do expression `throw ecul_erro_msg(your_exception(...))` - where your_excpetion(...) forms any expression - it will log error from  msg, and if possible also from the.what of your object, and you will throw it
 #define ecul_erro_msg(msg, exception) ecul::create_logged_exception_with_msg((msg), (exception), ECUL_HERE())
 
-#define ecul_warn(msg) ecul_log_warn(msg)
-#define ecul_info(msg) ecul_log_info(msg)
+#define ecul_warn(msg) ecul_log_warn(msg) ///< just logs a warning, code continues
+#define ecul_info(msg) ecul_log_info(msg) ///< simply logs an information
 
 // Static assertion to prevent direct usage without throw (compile-time check)
 // This creates a more forceful error than just [[nodiscard]]

@@ -11,6 +11,8 @@ C++:
 - use no-braces if/loops only for very short expressions run inside, but in this case write the control and the inside in 1 line. if multi-line then you must use braces { } even if just 1 instruction inside
 - wrap at 120 column, do not exceed 140.
 - do not write trailing spaces. truncate empty lines (whitespace-only) to have nothing not even ident
+- write comments compatible with Doxygen, write sparse commants. prefer 1-line. If code line is short and comment is short (re wrapping) then put comment in same line
+- do not write comment that explain quite obvious things that code does, write comment when something crucial or complex happens, or when need to explain why it happens
 
 - standard C++17. (but C++14 for the BitShares project itself, including the FC sub-project/library in BitShares)
 - in general: support Linux first. Would be nice to gratis get support for Mac, Windows, BSD, if just choosing proper approach or lib (but not worse ones) will do it, but in other case if there would be more work to support some OSes then do it only if it takes like extra 1-2 instructions to support MacOS/BSD. Do not write support for Windows if it needs separate approach all together (unless a tiny 1-2 liner).
