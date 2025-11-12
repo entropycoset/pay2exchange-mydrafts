@@ -993,7 +993,7 @@ int main(int argc, char* argv[]) {
 						server_args = {
 						// RUNTIME change this runtime. TODO fixme FIXME
 								"--server-rpc-endpoint=ws://127.0.0.1:1025",
-								"--chain-id", "08140cebb7723d4f8ffc6ce380b5dbb4c8cdd51b4e3c644d52af1918098a7643",
+								"--chain-id", "ddb8aac4581f73536075483f792cc65725430daeacb0f5cdccdefc3ee9b66dc7",
 								"--mutelog"  // Use --mutelog instead of --daemon to suppress logging but still enable pipe handling
 						};
 						// Note: --cmd-pipe XXX,YYY will be added dynamically with actual FD numbers
