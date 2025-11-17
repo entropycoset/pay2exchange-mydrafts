@@ -3,6 +3,9 @@
 
 #include <QShortcut>
 #include <QKeySequence>
+#include <QClipboard>
+#include <QApplication>
+#include <QKeyEvent>
 
 
 // -------------------------------------------------------
@@ -40,12 +43,87 @@ void addOverlay(QWidget *parent) {
 void MyTerm::contextMenuEvent(QContextMenuEvent *event) {
     QMenu menu(this);
     menu.addAction("Copy", this, &QTermWidget::copyClipboard);
+    menu.addAction("Copy All", this, &MyTerm::copyAllText);
     menu.addAction("Paste", this, &QTermWidget::pasteClipboard);
     menu.exec(event->globalPos());
 
     new QShortcut(QKeySequence("F9"), this, SLOT(close()));
 
     addOverlay(this);
+}
+
+void MyTerm::copyAllText() {
+    std::cout << "=== Copy All Debug ===" << std::endl;
+    
+    // Save the current selection (if any) to restore later
+    int oldStartRow, oldStartCol, oldEndRow, oldEndCol;
+    this->getSelectionStart(oldStartRow, oldStartCol);
+    this->getSelectionEnd(oldEndRow, oldEndCol);
+    bool hadSelection = (oldStartRow >= 0 && oldStartCol >= 0 &&
+                        oldEndRow >= 0 && oldEndCol >= 0);
+    
+    std::cout << "OLD selection: start(" << oldStartRow << "," << oldStartCol
+              << ") end(" << oldEndRow << "," << oldEndCol << ") hadSelection="
+              << (hadSelection ? "true" : "false") << std::endl;
+    
+    // Get the total number of lines (history + screen)
+    int historyLines = this->historyLinesCount();
+    int screenLines = this->screenLinesCount();
+    int totalLines = historyLines + screenLines;
+    
+    std::cout << "Terminal info: historyLines=" << historyLines
+              << " screenLines=" << screenLines
+              << " screenColumns=" << this->screenColumnsCount() << std::endl;
+    
+    // Select all text from the beginning (row 0) to the end of all scrollback
+    // Start from first line of scrollback
+    this->setSelectionStart(0, 0);
+    // End at the last line of scrollback (history + screen), last column
+    int lastRow = historyLines + screenLines - 1;
+    this->setSelectionEnd(lastRow, this->screenColumnsCount() - 1);
+    
+    // Verify the new selection was set
+    int newStartRow, newStartCol, newEndRow, newEndCol;
+    this->getSelectionStart(newStartRow, newStartCol);
+    this->getSelectionEnd(newEndRow, newEndCol);
+    std::cout << "NEW selection for copy: start(" << newStartRow << "," << newStartCol
+              << ") end(" << newEndRow << "," << newEndCol << ")" << std::endl;
+    
+    // Get the selected text before copying
+    QString selectedText = this->selectedText();
+    std::cout << "Selected text length: " << selectedText.length() << std::endl;
+    std::cout << "First 100 chars of selected text: ["
+              << selectedText.left(100).toStdString() << "]" << std::endl;
+    
+    // Copy the selected text to clipboard
+    this->copyClipboard();
+    
+    // Check what's in clipboard
+    QClipboard *clipboard = QApplication::clipboard();
+    QString clipboardText = clipboard->text();
+    std::cout << "Clipboard text length: " << clipboardText.length() << std::endl;
+    std::cout << "First 100 chars of clipboard: ["
+              << clipboardText.left(100).toStdString() << "]" << std::endl;
+    
+    // Restore the original selection if there was one
+    if (hadSelection) {
+        this->setSelectionStart(oldStartRow, oldStartCol);
+        this->setSelectionEnd(oldEndRow, oldEndCol);
+        
+        // Verify restoration
+        int restoredStartRow, restoredStartCol, restoredEndRow, restoredEndCol;
+        this->getSelectionStart(restoredStartRow, restoredStartCol);
+        this->getSelectionEnd(restoredEndRow, restoredEndCol);
+        std::cout << "RESTORED selection: start(" << restoredStartRow << "," << restoredStartCol
+                  << ") end(" << restoredEndRow << "," << restoredEndCol << ")" << std::endl;
+    } else {
+        // Clear selection by setting invalid coordinates
+        this->setSelectionStart(-1, -1);
+        this->setSelectionEnd(-1, -1);
+        std::cout << "CLEARED selection (no previous selection)" << std::endl;
+    }
+    
+    std::cout << "=== End Copy All Debug ===" << std::endl;
 }
 
 // POSIX-safe shell quoting: wraps in '...' and turns ' into '\''.
