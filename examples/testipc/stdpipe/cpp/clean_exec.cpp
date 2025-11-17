@@ -10,8 +10,6 @@
 #include "envcleaner.hpp"
 #include "libecul/ecul.hpp"
 
-namespace po = boost::program_options;
-
 // Override project name for ECUL logging
 namespace ecul {
 	std::string get_project_name() {
@@ -236,16 +234,18 @@ int main_run(int argc, char* argv[]) {
 			argvect.push_back(std::string(argv[i]));
 		}
 
-		po::options_description desc("Allowed options");
+		namespace po = boost::program_options;
+
+		boost::program_options::options_description desc("Allowed options");
 		desc.add_options()
 			("help,h", "produce help message")
-			("clean-fd-except", po::value<std::string>(), "comma-separated list of FDs to keep (e.g., '0,1,2')")
-			("clean-env-except", po::value<std::string>(), "comma-separated list of env vars to keep (e.g., 'PATH,USER')")
-			("set-env", po::value<std::string>(), "comma-separated list of env vars to set (e.g., 'HOME=/tmp,VAR=value')")
-			("program", po::value<std::string>()->required(), "program to execute")
-			("program-args", po::value<std::vector<std::string>>(), "arguments for the program");
+			("clean-fd-except", boost::program_options::value<std::string>(), "comma-separated list of FDs to keep (e.g., '0,1,2')")
+			("clean-env-except", boost::program_options::value<std::string>(), "comma-separated list of env vars to keep (e.g., 'PATH,USER')")
+			("set-env", boost::program_options::value<std::string>(), "comma-separated list of env vars to set (e.g., 'HOME=/tmp,VAR=value')")
+			("program", boost::program_options::value<std::string>()->required(), "program to execute")
+			("program-args", boost::program_options::value<std::vector<std::string>>(), "arguments for the program");
 
-		po::positional_options_description p;
+		boost::program_options::positional_options_description p;
 		p.add("program", 1);
 		p.add("program-args", -1);
 
@@ -259,14 +259,14 @@ int main_run(int argc, char* argv[]) {
 			args_vec.push_back(argvect.at(i));
 		}
 
-		po::variables_map vm;
+		boost::program_options::variables_map vm;
 		try {
-			po::store(po::command_line_parser(args_vec)
+			boost::program_options::store(boost::program_options::command_line_parser(args_vec)
 						 .options(desc)
 						 .positional(p)
 						 .allow_unregistered() // Allow program args that aren't in our options
 						 .run(), vm);
-		} catch (const po::error& e) {
+		} catch (const boost::program_options::error& e) {
 			throw ecul_erro_runtime("Argument parsing error: " + std::string(e.what()));
 		}
 
@@ -275,7 +275,7 @@ int main_run(int argc, char* argv[]) {
 			return 0;
 		}
 
-		po::notify(vm);
+		boost::program_options::notify(vm);
 
 		CleanupOptions opts;
 
@@ -395,7 +395,9 @@ int main(int argc, char* argv[]) {
 			if (argv[i] == nullptr) {
 				throw ecul_erro_runtime("Null argv element at index " + std::to_string(i));
 			}
-			argvect.push_back(std::string(argv[i]));
+			const std::string onearg = (argv[i]);
+			argvect.push_back(onearg);
+			ecul_info( (std::ostringstream{} << "arg[" << i << "] = [" << onearg << "]").str() )  ;
 		}
 
 		// Check for --help or insufficient arguments

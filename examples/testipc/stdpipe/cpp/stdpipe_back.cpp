@@ -14,6 +14,7 @@
 #include <cstring>
 #include <boost/process.hpp>
 #include <nlohmann/json.hpp>
+#include <sstream>
 #include "libvalidcolor/libvalidcolor.hpp"
 #include "libcmdformat/libcmdformat.hpp"
 #include "libstdpipeutil/libstdpipeutil.hpp"
@@ -158,8 +159,14 @@ private:
 		}
 
 public:
-		StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect, const std::string& mode = "", const std::vector<std::string>& server_args = {})
+		StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", 
+			StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect,
+			const std::string& mode = "", const std::vector<std::string>& server_args = {})
 				: m_stdouterr_mode(stdouterr_mode) {
+
+					ecul_info("START CONSTR XXX");
+
+				for (const auto & one : server_args) ecul_info((std::ostringstream{}<<"Preparing controller with args ["<<one<<"]").str());
 
 				// Always use v1lenend format now that both client and server support it
 				m_cmdformat = CmdFormat::cmdformat_v1lenend;
@@ -212,6 +219,7 @@ public:
 						}
 
 						// Add cmd-pipe argument for cli_wallet or FD args for stdpipe_serv
+						// TODO BADAI
 						if (!server_args.empty()) {
 								// For cli_wallet, use --cmd-pipe XXX,YYY format
 								all_args.push_back("--cmd-pipe");
@@ -227,7 +235,7 @@ public:
 						for (const auto& arg : all_args) {
 								args_str += " '" + arg + "'";
 						}
-						ecul_log_info(args_str);
+						ecul_info(args_str);
 
 						// Start the server process - setup redirection based on stdouterr mode
 						if (cleanup_exec_prog.empty()) {
@@ -360,6 +368,9 @@ public:
 														server_path,
 														cmd_fd_str,
 														resp_fd_str,
+														"--",
+														all_args,
+
 														bp::std_in.close()
 												);
 												break;
@@ -992,14 +1003,16 @@ int main(int argc, char* argv[]) {
 						actual_server_path = "/home/joe/work/pay2exchange-core/use/programs/cli_wallet/cli_wallet";
 						server_args = {
 						// RUNTIME change this runtime. TODO fixme FIXME
-								"--server-rpc-endpoint=ws://127.0.0.1:1025",
-								"--chain-id", "ddb8aac4581f73536075483f792cc65725430daeacb0f5cdccdefc3ee9b66dc7",
+								"--server-rpc-endpoint=ws://127.0.0.3:1025",
+								"--chain-id", "810b4c0595713de686ba9e9191997b86b3da7b3edd022071a86d2efd1ef4c31b",
 								"--mutelog"  // Use --mutelog instead of --daemon to suppress logging but still enable pipe handling
 						};
 						// Note: --cmd-pipe XXX,YYY will be added dynamically with actual FD numbers
 				}
 
 				// Create controller and dispatch based on mode
+				// PLACE: formed the args to send to child.
+				ecul_info((std::ostringstream{} <<"Will start child with nubmer of args: " << server_args.size()).str());
 				StdPipeController controller(actual_server_path, cleanup_exec_prog, stdouterr_mode, mode, server_args);
 
 				if (mode == "test") {
