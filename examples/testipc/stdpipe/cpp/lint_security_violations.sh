@@ -81,19 +81,58 @@ check_catch_all() {
 check_stop_exception_catch() {
 	echo "Checking for forbidden critical exception catching..."
 	
-	# More precise regex to match actual catch statements only
-	local matches=$(find "$PROJECT_ROOT" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | \
-		xargs grep -n "catch\s*(\s*.*stop_exception.*)\|catch\s*(\s*.*critical_do_not_catch_exception_stop.*)" 2>/dev/null || true)
+	# Find critical exception catching patterns
+	local temp_file=$(mktemp)
+	find "$PROJECT_ROOT" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | \
+		xargs grep -n -B2 "catch\s*(\s*.*stop_exception.*)\|catch\s*(\s*.*critical_do_not_catch_exception_stop.*)" 2>/dev/null > "$temp_file" || true
 	
-	if [ -n "$matches" ]; then
+	# Filter out allowed cases (those with UNSAFE_LINTER_IGNORE_CATCH_ALL marker)
+	local violations=""
+	while IFS= read -r line; do
+		if [[ "$line" =~ catch.*critical_do_not_catch_exception_stop.*\) ]] || [[ "$line" =~ catch.*stop_exception.*\) ]]; then
+			# Check if this catch is preceded by the ignore marker
+			local line_num=$(echo "$line" | cut -d: -f2)
+			local file_path=$(echo "$line" | cut -d: -f1)
+			
+			# Check 3 lines before for the ignore marker
+			local has_marker=false
+			for i in {1..3}; do
+				local check_line=$((line_num - i))
+				if [ $check_line -gt 0 ]; then
+					local marker_check=$(sed -n "${check_line}p" "$file_path" 2>/dev/null | grep "UNSAFE_LINTER_IGNORE_CATCH_ALL" || true)
+					if [ -n "$marker_check" ]; then
+						has_marker=true
+						break
+					fi
+				fi
+			done
+			
+			if [ "$has_marker" = false ]; then
+				violations="${violations}${line}\n"
+			fi
+		fi
+	done < "$temp_file"
+	
+	rm -f "$temp_file"
+	
+	# Count total critical exception patterns found
+	local total_patterns=$(find "$PROJECT_ROOT" -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | \
+		xargs grep -n "catch\s*(\s*.*stop_exception.*)\|catch\s*(\s*.*critical_do_not_catch_exception_stop.*)" 2>/dev/null | wc -l || echo 0)
+	
+	if [ -n "$violations" ]; then
 		echo -e "${RED}❌ SECURITY VIOLATION: Found forbidden critical exception catching:${NC}"
-		echo "$matches"
+		echo -e "$violations"
 		echo -e "${RED}	→ stop_exception and critical_do_not_catch_exception_stop must NEVER be caught!${NC}"
 		echo -e "${RED}	→ These indicate critical security/logic violations!${NC}"
+		echo -e "${YELLOW}	→ Add '// UNSAFE_LINTER_IGNORE_CATCH_ALL' comment above for exceptional cases${NC}"
 		EXIT_CODE=1
 	else
-		echo -e "${GREEN}✅ No forbidden critical exception catching found (*) with remark:${NC}"
-		echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
+		if [ "$total_patterns" -gt 0 ]; then
+			echo -e "${GREEN}✅ No forbidden critical exception catching found (*) with remark:${NC}"
+			echo -e "${YELLOW}	 (*) (some code might ignore checks, git grep source for UNSAFE_LINTER and also 'UNSAFE_LINTER_IGNORE_CATCH_ALL' and verify the unsafe excluded code)${NC}"
+		else
+			echo -e "${GREEN}✅ No forbidden critical exception catching found${NC}"
+		fi
 	fi
 }
 

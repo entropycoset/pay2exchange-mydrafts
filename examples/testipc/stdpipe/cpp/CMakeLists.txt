@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable compilation database generation for clang-tidy
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Only set CMP0167 if the CMake version knows about it
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW) # I know FindBoost is gone, I’m fine with using Boost’s own config
@@ -89,21 +92,41 @@ if(CLANG_TIDY_AVAILABLE)
 		message(STATUS "  ${src}")
 	endforeach()
 
+    # Create clang-tidy target that uses compilation database
     add_custom_target(lint_clang_tidy
+        COMMAND ${CMAKE_COMMAND} -E echo "🔍 Checking for compilation database..."
+        COMMAND test -f ${CMAKE_BINARY_DIR}/compile_commands.json || (echo "❌ ERROR: compile_commands.json not found" && exit 1)
+        COMMAND ${CMAKE_COMMAND} -E echo "✅ Found compilation database"
+        # Use compilation database but only show warnings from user code
         COMMAND ${CLANG_TIDY_EXECUTABLE}
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
-            --header-filter=.*
+            --header-filter=${CMAKE_SOURCE_DIR}/.*
+            --quiet
+            --format-style=file
+            -p ${CMAKE_BINARY_DIR}
             ${ALL_SOURCE_FILES}
-            --
-            -std=c++17
-            -I${CMAKE_SOURCE_DIR}
-            -I${CMAKE_SOURCE_DIR}/libvalidcolor
-            -I${CMAKE_SOURCE_DIR}/libcmdformat
-            -I${CMAKE_SOURCE_DIR}/libstdpipeutil
-            -I${Boost_INCLUDE_DIRS} || true
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "🔍 Running clang-tidy on all source files (informational)"
+        COMMENT "🔍 Running clang-tidy using compilation database"
     )
+    
+    # Make clang-tidy depend on having built at least one target to ensure compile_commands.json exists
+    add_dependencies(lint_clang_tidy stdpipe_back)
+    
+    # Optional: Create a separate heavy clang-tidy target for thorough analysis
+    add_custom_target(lint_clang_tidy_full
+        COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running full clang-tidy analysis (includes system headers)..."
+        COMMAND test -f ${CMAKE_BINARY_DIR}/compile_commands.json || (echo "❌ ERROR: compile_commands.json not found" && exit 1)
+        COMMAND ${CLANG_TIDY_EXECUTABLE}
+            --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
+            --header-filter='^${CMAKE_SOURCE_DIR}/.*[.](hpp|h)$$'
+            --system-headers=0
+            --quiet
+            -p ${CMAKE_BINARY_DIR}
+            ${ALL_SOURCE_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "🔍 Running full clang-tidy analysis (slow but thorough)"
+    )
+    add_dependencies(lint_clang_tidy_full stdpipe_back)
 endif()
 
 # cppcheck target
@@ -407,10 +430,12 @@ endif()
 
 # Success message
 if(LINT_DEPENDENCIES)
+	# Convert list to string for safe echoing
+	string(REPLACE ";" ", " LINT_DEPS_STR "${LINT_DEPENDENCIES}")
 	add_custom_command(TARGET after_build POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E echo "✅ Build complete - executables installed and linting passed"
 		COMMAND ${CMAKE_COMMAND} -E echo "   Installed to: ${P2E_TOOLS_DIR}"
-		COMMAND ${CMAKE_COMMAND} -E echo "   Available linters: ${LINT_DEPENDENCIES}"
+		COMMAND ${CMAKE_COMMAND} -E echo "   Available linters: ${LINT_DEPS_STR}"
 		COMMENT "Build success with linting"
 	)
 else()
