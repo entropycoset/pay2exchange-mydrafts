@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Only set CMP0167 if the CMake version knows about it
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW) # I know FindBoost is gone, I’m fine with using Boost’s own config
+endif()
+
 # =====================================================
 # Linter Detection and Configuration
 # =====================================================
@@ -64,7 +69,7 @@ if(CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "🔒 Running security violation checks"
     )
-    
+
     # Make the lint script executable during configure
     if(UNIX)
         execute_process(COMMAND chmod +x ${CMAKE_SOURCE_DIR}/lint_security_violations.sh)
@@ -132,12 +137,12 @@ if(LINT_DEPENDENCIES)
         DEPENDS ${LINT_DEPENDENCIES}
         COMMENT "🔍 Running all available linters"
     )
-    
+
     # Make lint target PHONY (always run)
     set_target_properties(lint PROPERTIES
         EXCLUDE_FROM_ALL FALSE
     )
-    
+
     if(CLANG_TIDY_AVAILABLE)
         set_target_properties(lint_clang_tidy PROPERTIES EXCLUDE_FROM_ALL FALSE)
     endif()
@@ -145,7 +150,7 @@ if(LINT_DEPENDENCIES)
         set_target_properties(lint_cppcheck PROPERTIES EXCLUDE_FROM_ALL FALSE)
     endif()
     set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    
+
     message(STATUS "✅ Lint target created with: ${LINT_DEPENDENCIES}")
 else()
     # Create a dummy lint target that shows warnings
