@@ -50,14 +50,20 @@ file(GLOB_RECURSE ALL_SOURCE_FILES
     "${CMAKE_SOURCE_DIR}/*.hpp"
     "${CMAKE_SOURCE_DIR}/*.h"
 )
+# Print the resulting list
+message(STATUS "Collected source files for linting (before excluding/editing this list):")
+foreach(src ${ALL_SOURCE_FILES})
+    message(STATUS "  ${src}")
+endforeach()
 
 # Filter out build directory files and CMake generated files
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
+
+# list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
 list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX ".*/CMakeFiles/.*")
 
 # For cppcheck, only use .cpp files to avoid issues with incomplete headers
 file(GLOB_RECURSE CPP_SOURCE_FILES "${CMAKE_SOURCE_DIR}/*.cpp")
-list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
+#list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
 list(FILTER CPP_SOURCE_FILES EXCLUDE REGEX ".*/CMakeFiles/.*")
 
 # Create lint targets
@@ -78,6 +84,11 @@ endif()
 
 # clang-tidy target
 if(CLANG_TIDY_AVAILABLE)
+	message(STATUS "Collected source files for linting (right before use):")
+	foreach(src ${ALL_SOURCE_FILES})
+		message(STATUS "  ${src}")
+	endforeach()
+
     add_custom_target(lint_clang_tidy
         COMMAND ${CLANG_TIDY_EXECUTABLE}
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
