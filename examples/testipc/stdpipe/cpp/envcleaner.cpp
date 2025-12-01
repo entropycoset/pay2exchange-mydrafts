@@ -264,13 +264,13 @@ size_t count_open_fd() {
 		// Static asserts to ensure FD type safety at compile time
 		// File descriptors are int type in POSIX, verify type relationships
 		static_assert(sizeof(int) <= sizeof(long),
-									"int (FD type) must fit in long (strtol return type)");
+			"int (FD type) must fit in long (strtol return type)");
 		static_assert(std::numeric_limits<int>::max() <= std::numeric_limits<long>::max(),
-									"int max value must fit in long for safe strtol parsing");
+			"int max value must fit in long for safe strtol parsing");
 		static_assert(std::numeric_limits<int>::min() >= std::numeric_limits<long>::min(),
-									"int min value must be representable in long");
+			"int min value must be representable in long");
 		static_assert(std::is_signed<int>::value == std::is_signed<long>::value,
-									"int and long must have same signedness for safe conversion");
+			"int and long must have same signedness for safe conversion"); // NOLINT(misc-redundant-expression)
 
 		DIR* fd_dir = safe_opendir("/proc/self/fd");
 

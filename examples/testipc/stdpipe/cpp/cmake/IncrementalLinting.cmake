@@ -84,7 +84,6 @@ function(create_clang_tidy_target source_file base_output_path rel_source_file)
         COMMAND ${CLANG_TIDY_EXECUTABLE}
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
             --header-filter=${CMAKE_SOURCE_DIR}/.*
-            --quiet
             --format-style=file
             -p ${CMAKE_BINARY_DIR}
             "${source_file}"

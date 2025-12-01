@@ -116,7 +116,6 @@ if(CLANG_TIDY_AVAILABLE)
         COMMAND ${CLANG_TIDY_EXECUTABLE}
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
             --header-filter=${CMAKE_SOURCE_DIR}/.*
-            --quiet
             --format-style=file
             -p ${CMAKE_BINARY_DIR}
             ${ALL_SOURCE_FILES}
@@ -135,7 +134,6 @@ if(CLANG_TIDY_AVAILABLE)
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
             --header-filter=^${CMAKE_SOURCE_DIR}/.*[.]\(hpp\|h\)$
             --system-headers=0
-            --quiet
             -p ${CMAKE_BINARY_DIR}
             ${ALL_SOURCE_FILES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -254,7 +252,6 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                     COMMAND ${CLANG_TIDY_EXECUTABLE}
                         --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
                         --header-filter=${CMAKE_SOURCE_DIR}/.*
-                        --quiet
                         --format-style=file
                         -p ${CMAKE_BINARY_DIR}
                         "${source_file}"

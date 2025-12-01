@@ -18,14 +18,39 @@ if(NOT all_lint_files)
     return()
 endif()
 
+# Filter out files with only suppressed warnings (no actionable warnings)
+set(files_with_real_warnings "")
+foreach(lint_file ${all_lint_files})
+    file(SIZE "${lint_file}" file_size)
+    if(file_size GREATER 0)
+        # Read file content to check if it contains actual warnings
+        file(READ "${lint_file}" file_content)
+        # Check if file contains actual warnings (not just "Suppressed X warnings")
+        string(REGEX MATCH "warning:|error:|note:" has_actual_warnings "${file_content}")
+        if(has_actual_warnings)
+            list(APPEND files_with_real_warnings "${lint_file}")
+        endif()
+    endif()
+endforeach()
+
 # Count files
 list(LENGTH all_lint_files total_files)
-message(STATUS "Found ${total_files} .lint files")
+list(LENGTH files_with_real_warnings files_with_warnings)
 
-# Show actual .lint file paths for easy copy-pasting
-list(SORT all_lint_files)
+message(STATUS "Found ${total_files} .lint files (${files_with_warnings} with actionable warnings)")
 
-foreach(lint_file ${all_lint_files})
+if(NOT files_with_real_warnings)
+    message(STATUS "🎉 All files passed linting with no actionable warnings!")
+    message(STATUS "   (Some files may have suppressed warnings from system headers)")
+    message(STATUS "========================================")
+    return()
+endif()
+
+# Show only files with actual actionable warnings
+message(STATUS "")
+message(STATUS "⚠️  FILES WITH ACTIONABLE WARNINGS:")
+
+foreach(lint_file ${files_with_real_warnings})
     # Make path relative to current directory for copy-pasting
     file(RELATIVE_PATH rel_lint_file "${CMAKE_CURRENT_BINARY_DIR}" "${lint_file}")
     get_filename_component(lint_name "${lint_file}" NAME)
@@ -39,7 +64,12 @@ foreach(lint_file ${all_lint_files})
         set(tool "unknown")
     endif()
     
-    message(STATUS "  📄 ${rel_lint_file} (${tool})")
+    # Count actual warnings in the file
+    file(READ "${lint_file}" file_content)
+    string(REGEX MATCHALL "warning:" warning_matches "${file_content}")
+    list(LENGTH warning_matches warning_count)
+    
+    message(STATUS "  📄 ${rel_lint_file} (${tool}) - ${warning_count} warnings")
 endforeach()
 
 message(STATUS "")
