@@ -9,6 +9,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Enable compilation database generation for clang-tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# =====================================================
+# Incremental Linting Configuration
+# =====================================================
+
+# Option to enable incremental linting (per-file .lint files)
+option(ENABLE_INCREMENTAL_LINTING "Use incremental .lint files instead of monolithic linting" ON)
+option(LINT_SHOW_SUMMARY "Show aggregated lint summary after incremental linting" ON)
+
+if(ENABLE_INCREMENTAL_LINTING)
+    message(STATUS "✅ Incremental linting enabled - will create .lint files per source file")
+else()
+    message(STATUS "📝 Using legacy monolithic linting")
+endif()
+
 # Only set CMP0167 if the CMake version knows about it
 if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW) # I know FindBoost is gone, I’m fine with using Boost’s own config
@@ -118,7 +132,7 @@ if(CLANG_TIDY_AVAILABLE)
         COMMAND test -f ${CMAKE_BINARY_DIR}/compile_commands.json || (echo "❌ ERROR: compile_commands.json not found" && exit 1)
         COMMAND ${CLANG_TIDY_EXECUTABLE}
             --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
-            --header-filter='^${CMAKE_SOURCE_DIR}/.*[.](hpp|h)$$'
+            --header-filter=^${CMAKE_SOURCE_DIR}/.*[.]\(hpp\|h\)$
             --system-headers=0
             --quiet
             -p ${CMAKE_BINARY_DIR}
@@ -192,6 +206,65 @@ else()
         COMMAND ${CMAKE_COMMAND} -E echo "❌ No linters available - install clang-tidy and/or cppcheck"
         COMMENT "⚠️  Linters not available"
     )
+endif()
+
+# =====================================================
+# Incremental Linting Integration
+# =====================================================
+
+if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
+    # Include the incremental linting module
+    include(cmake/IncrementalLinting.cmake)
+    
+    # Create incremental lint targets (this will be called after first build when compile_commands.json exists)
+    add_custom_target(setup_incremental_linting
+        COMMAND ${CMAKE_COMMAND} -E echo "🚀 Setting up incremental linting system..."
+        COMMAND ${CMAKE_COMMAND}
+            -DCMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}
+            -DCLANG_TIDY_AVAILABLE=${CLANG_TIDY_AVAILABLE}
+            -DCPPCHECK_AVAILABLE=${CPPCHECK_AVAILABLE}
+            -DCLANG_TIDY_EXECUTABLE=${CLANG_TIDY_EXECUTABLE}
+            -DCPPCHECK_EXECUTABLE=${CPPCHECK_EXECUTABLE}
+            -P ${CMAKE_SOURCE_DIR}/cmake/SetupIncrementalLinting.cmake
+        DEPENDS ${CMAKE_BINARY_DIR}/compile_commands.json
+        COMMENT "🔧 Configuring incremental lint targets"
+    )
+    
+    # Create lint summary target
+    add_custom_target(lint_summary
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/GenerateLintSummary.cmake
+        COMMENT "📊 Generating lint summary report"
+    )
+    
+    # Enhanced lint target that uses incremental linting when available
+    if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
+        # If compile_commands.json exists, enable incremental linting immediately
+        enable_incremental_linting()
+        
+        # Override the main lint target to use incremental linting + summary
+        if(TARGET lint AND LINT_SHOW_SUMMARY)
+            add_dependencies(lint lint_summary)
+        endif()
+        
+        message(STATUS "✅ Incremental linting enabled with existing compilation database")
+    else()
+        message(STATUS "📋 Incremental linting will be available after first build (when compile_commands.json is created)")
+        
+        # Create a target that sets up incremental linting after the first build
+        add_custom_target(enable_incremental_after_build
+            COMMAND ${CMAKE_COMMAND} -E echo "🎯 Incremental linting is now available!"
+            COMMAND ${CMAKE_COMMAND} -E echo "   Usage: ninja lint_incremental"
+            COMMAND ${CMAKE_COMMAND} -E echo "   View results: cat CMakeFiles/target.dir/file.cpp.clang-tidy.lint"
+            DEPENDS setup_incremental_linting
+            COMMENT "✅ Incremental linting ready"
+        )
+    endif()
+    
+    message(STATUS "🔄 Incremental linting integration complete")
+    message(STATUS "   📝 .lint files will be created per source file")
+    message(STATUS "   ⚡ Only changed files and their dependencies will be re-linted")
+    message(STATUS "   📊 Use 'ninja lint_summary' to view aggregated results")
 endif()
 
 # =====================================================
