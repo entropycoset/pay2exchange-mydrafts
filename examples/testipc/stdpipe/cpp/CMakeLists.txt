@@ -227,50 +227,62 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         
         set(INDIVIDUAL_LINT_TARGETS "")
         
-        # Create individual .lint files for each .cpp file (true incremental)
+        # Create individual .lint files - clang-tidy on ALL files, cppcheck on .cpp only
         set(ALL_CLANG_TIDY_LINT_FILES "")
         set(ALL_CPPCHECK_LINT_FILES "")
         
-        foreach(cpp_file ${CPP_SOURCE_FILES})
-            # Skip if outside our source tree
-            file(RELATIVE_PATH rel_cpp_file "${CMAKE_SOURCE_DIR}" "${cpp_file}")
-            if(rel_cpp_file MATCHES "^\\.\\./")
-                continue()
-            endif()
-            
-            # Create lint file paths in build directory
-            string(REPLACE "/" "_" safe_name "${rel_cpp_file}")
-            string(REPLACE ".cpp" "" safe_name "${safe_name}")
-            
-            # Create clang-tidy .lint file
-            if(CLANG_TIDY_AVAILABLE)
+        # Process all source files for clang-tidy (includes .cpp, .hpp, .h)
+        if(CLANG_TIDY_AVAILABLE)
+            foreach(source_file ${ALL_SOURCE_FILES})
+                # Skip if outside our source tree
+                file(RELATIVE_PATH rel_source_file "${CMAKE_SOURCE_DIR}" "${source_file}")
+                if(rel_source_file MATCHES "^\\.\\./")
+                    continue()
+                endif()
+                
+                # Create lint file paths in build directory (include extension to avoid conflicts)
+                string(REPLACE "/" "_" safe_name "${rel_source_file}")
+                string(REPLACE "." "_" safe_name "${safe_name}")
+                
                 set(clang_tidy_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.clang-tidy.lint")
                 
                 add_custom_command(
                     OUTPUT "${clang_tidy_lint_file}"
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lint_output"
-                    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running clang-tidy on ${rel_cpp_file}..."
+                    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running clang-tidy on ${rel_source_file}..."
                     COMMAND ${CLANG_TIDY_EXECUTABLE}
                         --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
                         --header-filter=${CMAKE_SOURCE_DIR}/.*
                         --quiet
                         --format-style=file
                         -p ${CMAKE_BINARY_DIR}
-                        "${cpp_file}"
+                        "${source_file}"
                         > "${clang_tidy_lint_file}" 2>&1 || echo "LINT_COMPLETED_WITH_WARNINGS" >> "${clang_tidy_lint_file}"
-                    COMMAND ${CMAKE_COMMAND} -E echo "✅ clang-tidy completed for ${rel_cpp_file}"
+                    COMMAND ${CMAKE_COMMAND} -E echo "✅ clang-tidy completed for ${rel_source_file}"
                     DEPENDS
-                        "${cpp_file}"
+                        "${source_file}"
                         "${CMAKE_SOURCE_DIR}/.clang-tidy"
                         "${CMAKE_BINARY_DIR}/compile_commands.json"
-                    COMMENT "🔍 Linting ${rel_cpp_file} with clang-tidy"
+                    COMMENT "🔍 Linting ${rel_source_file} with clang-tidy"
                     VERBATIM
                 )
                 list(APPEND ALL_CLANG_TIDY_LINT_FILES "${clang_tidy_lint_file}")
-            endif()
-            
-            # Create cppcheck .lint file
-            if(CPPCHECK_AVAILABLE)
+            endforeach()
+        endif()
+        
+        # Process only .cpp files for cppcheck
+        if(CPPCHECK_AVAILABLE)
+            foreach(cpp_file ${CPP_SOURCE_FILES})
+                # Skip if outside our source tree
+                file(RELATIVE_PATH rel_cpp_file "${CMAKE_SOURCE_DIR}" "${cpp_file}")
+                if(rel_cpp_file MATCHES "^\\.\\./")
+                    continue()
+                endif()
+                
+                # Create lint file paths in build directory
+                string(REPLACE "/" "_" safe_name "${rel_cpp_file}")
+                string(REPLACE "." "_" safe_name "${safe_name}")
+                
                 set(cppcheck_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.cppcheck.lint")
                 
                 add_custom_command(
@@ -301,8 +313,8 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                     VERBATIM
                 )
                 list(APPEND ALL_CPPCHECK_LINT_FILES "${cppcheck_lint_file}")
-            endif()
-        endforeach()
+            endforeach()
+        endif()
         
         # Create aggregation targets that depend on .lint files
         if(CLANG_TIDY_AVAILABLE AND ALL_CLANG_TIDY_LINT_FILES)

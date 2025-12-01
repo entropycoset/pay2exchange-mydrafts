@@ -22,22 +22,30 @@ endif()
 list(LENGTH all_lint_files total_files)
 message(STATUS "Found ${total_files} .lint files")
 
-# Categorize and display files
+# Show actual .lint file paths for easy copy-pasting
+list(SORT all_lint_files)
+
 foreach(lint_file ${all_lint_files})
+    # Make path relative to current directory for copy-pasting
+    file(RELATIVE_PATH rel_lint_file "${CMAKE_CURRENT_BINARY_DIR}" "${lint_file}")
     get_filename_component(lint_name "${lint_file}" NAME)
-    get_filename_component(lint_dir "${lint_file}" DIRECTORY)
     
-    # Extract source file name from .lint filename
-    string(REGEX REPLACE "\\.clang-tidy\\.lint$|\\.cppcheck\\.lint$" "" source_name "${lint_name}")
-    
-    # Determine if it's a library or main target
-    if(lint_dir MATCHES "lib[^/]+/CMakeFiles")
-        string(REGEX REPLACE ".*/lib([^/]+)/CMakeFiles.*" "\\1" lib_name "${lint_dir}")
-        message(STATUS "  📄 lib${lib_name}: ${source_name}")
+    # Extract tool type
+    if(lint_name MATCHES "\\.clang-tidy\\.lint$")
+        set(tool "clang-tidy")
+    elseif(lint_name MATCHES "\\.cppcheck\\.lint$")
+        set(tool "cppcheck")
     else()
-        message(STATUS "  📄 ${source_name}")
+        set(tool "unknown")
     endif()
+    
+    message(STATUS "  📄 ${rel_lint_file} (${tool})")
 endforeach()
+
+message(STATUS "")
+message(STATUS "💡 View lint results:")
+message(STATUS "   cat lint_output/filename.clang-tidy.lint")
+message(STATUS "   cat lint_output/filename.cppcheck.lint")
 
 message(STATUS "")
 message(STATUS "💡 USAGE:")
