@@ -239,34 +239,32 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         COMMENT "📊 Generating lint summary report"
     )
     
-    # Enhanced lint target that uses incremental linting when available
-    if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
-        # If compile_commands.json exists, enable incremental linting immediately
-        enable_incremental_linting()
-        
-        # Override the main lint target to use incremental linting + summary
-        if(TARGET lint AND LINT_SHOW_SUMMARY)
-            add_dependencies(lint lint_summary)
-        endif()
-        
-        message(STATUS "✅ Incremental linting enabled with existing compilation database")
-    else()
-        message(STATUS "📋 Incremental linting will be available after first build (when compile_commands.json is created)")
-        
-        # Create a target that sets up incremental linting after the first build
-        add_custom_target(enable_incremental_after_build
-            COMMAND ${CMAKE_COMMAND} -E echo "🎯 Incremental linting is now available!"
-            COMMAND ${CMAKE_COMMAND} -E echo "   Usage: ninja lint_incremental"
-            COMMAND ${CMAKE_COMMAND} -E echo "   View results: cat CMakeFiles/target.dir/file.cpp.clang-tidy.lint"
-            DEPENDS setup_incremental_linting
-            COMMENT "✅ Incremental linting ready"
-        )
+    # Always enable incremental linting - it will handle missing compile_commands.json gracefully
+    enable_incremental_linting()
+    
+    # Create the main lint target that uses incremental linting
+    set(INCREMENTAL_LINT_DEPS "")
+    list(APPEND INCREMENTAL_LINT_DEPS lint_security)
+    
+    if(LINT_SHOW_SUMMARY)
+        list(APPEND INCREMENTAL_LINT_DEPS lint_summary)
     endif()
     
-    message(STATUS "🔄 Incremental linting integration complete")
+    # Create the main lint target for incremental mode
+    add_custom_target(lint
+        DEPENDS ${INCREMENTAL_LINT_DEPS}
+        COMMENT "🔍 Running incremental linting system"
+    )
+    
+    # Make lint target PHONY (always run)
+    set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    
+    message(STATUS "✅ Incremental linting system enabled")
     message(STATUS "   📝 .lint files will be created per source file")
     message(STATUS "   ⚡ Only changed files and their dependencies will be re-linted")
     message(STATUS "   📊 Use 'ninja lint_summary' to view aggregated results")
+    message(STATUS "   🎯 Main lint target uses incremental mode")
 endif()
 
 # =====================================================
