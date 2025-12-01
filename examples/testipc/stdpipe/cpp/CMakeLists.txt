@@ -19,6 +19,7 @@ option(LINT_SHOW_SUMMARY "Show aggregated lint summary after incremental linting
 
 if(ENABLE_INCREMENTAL_LINTING)
     message(STATUS "✅ Incremental linting enabled - will create .lint files per source file")
+    message(STATUS "💡 Use 'make -j$(nproc) lint' or 'ninja lint' for parallel execution")
 else()
     message(STATUS "📝 Using legacy monolithic linting")
 endif()
@@ -318,16 +319,18 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         
         # Create aggregation targets that depend on .lint files
         if(CLANG_TIDY_AVAILABLE AND ALL_CLANG_TIDY_LINT_FILES)
+            list(LENGTH ALL_CLANG_TIDY_LINT_FILES num_clang_tidy_targets)
             add_custom_target(lint_clang_tidy_incremental
                 DEPENDS ${ALL_CLANG_TIDY_LINT_FILES}
-                COMMENT "🔍 Running incremental clang-tidy on changed files only"
+                COMMENT "🔍 Running incremental clang-tidy on changed files (${num_clang_tidy_targets} files)"
             )
         endif()
         
         if(CPPCHECK_AVAILABLE AND ALL_CPPCHECK_LINT_FILES)
+            list(LENGTH ALL_CPPCHECK_LINT_FILES num_cppcheck_targets)
             add_custom_target(lint_cppcheck_incremental
                 DEPENDS ${ALL_CPPCHECK_LINT_FILES}
-                COMMENT "🔍 Running incremental cppcheck on changed files only"
+                COMMENT "🔍 Running incremental cppcheck on changed files (${num_cppcheck_targets} files)"
             )
         endif()
         
@@ -353,10 +356,24 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
         
         list(LENGTH INDIVIDUAL_LINT_TARGETS num_targets)
-        message(STATUS "✅ Created ${num_targets} individual lint targets")
+        # Count targets for status message
+        set(num_clang_tidy_files 0)
+        set(num_cppcheck_files 0)
+        if(ALL_CLANG_TIDY_LINT_FILES)
+            list(LENGTH ALL_CLANG_TIDY_LINT_FILES num_clang_tidy_files)
+        endif()
+        if(ALL_CPPCHECK_LINT_FILES)
+            list(LENGTH ALL_CPPCHECK_LINT_FILES num_cppcheck_files)
+        endif()
+        
         message(STATUS "✅ Incremental linting system enabled")
-        message(STATUS "   🎯 Run individual file: make filename_cpp_lint_clang_tidy")
-        message(STATUS "   🎯 Run all incremental: make lint")
+        message(STATUS "   📊 clang-tidy: ${num_clang_tidy_files} files")
+        message(STATUS "   📊 cppcheck: ${num_cppcheck_files} files")
+        message(STATUS "")
+        message(STATUS "💡 PARALLEL EXECUTION:")
+        message(STATUS "   🚀 make -j$(nproc) lint        # Use all CPU cores")
+        message(STATUS "   🚀 ninja lint                  # Ninja auto-detects cores")
+        message(STATUS "   📄 Individual: make path/file.cpp.clang-tidy.lint")
         
     else()
         message(STATUS "⚠️  compile_commands.json not found - using legacy lint targets")
