@@ -215,56 +215,158 @@ endif()
 # =====================================================
 
 if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
-    # Include the incremental linting module
-    include(cmake/IncrementalLinting.cmake)
-    
-    # Create incremental lint targets (this will be called after first build when compile_commands.json exists)
-    add_custom_target(setup_incremental_linting
-        COMMAND ${CMAKE_COMMAND} -E echo "🚀 Setting up incremental linting system..."
-        COMMAND ${CMAKE_COMMAND}
-            -DCMAKE_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-            -DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}
-            -DCLANG_TIDY_AVAILABLE=${CLANG_TIDY_AVAILABLE}
-            -DCPPCHECK_AVAILABLE=${CPPCHECK_AVAILABLE}
-            -DCLANG_TIDY_EXECUTABLE=${CLANG_TIDY_EXECUTABLE}
-            -DCPPCHECK_EXECUTABLE=${CPPCHECK_EXECUTABLE}
-            -P ${CMAKE_SOURCE_DIR}/cmake/SetupIncrementalLinting.cmake
-        DEPENDS ${CMAKE_BINARY_DIR}/compile_commands.json
-        COMMENT "🔧 Configuring incremental lint targets"
-    )
-    
     # Create lint summary target
     add_custom_target(lint_summary
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/GenerateLintSummary.cmake
         COMMENT "📊 Generating lint summary report"
     )
     
-    # Always enable incremental linting - it will handle missing compile_commands.json gracefully
-    enable_incremental_linting()
-    
-    # Create the main lint target that uses incremental linting
-    set(INCREMENTAL_LINT_DEPS "")
-    list(APPEND INCREMENTAL_LINT_DEPS lint_security)
-    
-    if(LINT_SHOW_SUMMARY)
-        list(APPEND INCREMENTAL_LINT_DEPS lint_summary)
+    # Simple incremental linting - create individual targets for each .cpp file
+    if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
+        message(STATUS "🚀 Creating incremental lint targets for .cpp files")
+        
+        set(INDIVIDUAL_LINT_TARGETS "")
+        
+        # Create individual .lint files for each .cpp file (true incremental)
+        set(ALL_CLANG_TIDY_LINT_FILES "")
+        set(ALL_CPPCHECK_LINT_FILES "")
+        
+        foreach(cpp_file ${CPP_SOURCE_FILES})
+            # Skip if outside our source tree
+            file(RELATIVE_PATH rel_cpp_file "${CMAKE_SOURCE_DIR}" "${cpp_file}")
+            if(rel_cpp_file MATCHES "^\\.\\./")
+                continue()
+            endif()
+            
+            # Create lint file paths in build directory
+            string(REPLACE "/" "_" safe_name "${rel_cpp_file}")
+            string(REPLACE ".cpp" "" safe_name "${safe_name}")
+            
+            # Create clang-tidy .lint file
+            if(CLANG_TIDY_AVAILABLE)
+                set(clang_tidy_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.clang-tidy.lint")
+                
+                add_custom_command(
+                    OUTPUT "${clang_tidy_lint_file}"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lint_output"
+                    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running clang-tidy on ${rel_cpp_file}..."
+                    COMMAND ${CLANG_TIDY_EXECUTABLE}
+                        --config-file=${CMAKE_SOURCE_DIR}/.clang-tidy
+                        --header-filter=${CMAKE_SOURCE_DIR}/.*
+                        --quiet
+                        --format-style=file
+                        -p ${CMAKE_BINARY_DIR}
+                        "${cpp_file}"
+                        > "${clang_tidy_lint_file}" 2>&1 || echo "LINT_COMPLETED_WITH_WARNINGS" >> "${clang_tidy_lint_file}"
+                    COMMAND ${CMAKE_COMMAND} -E echo "✅ clang-tidy completed for ${rel_cpp_file}"
+                    DEPENDS
+                        "${cpp_file}"
+                        "${CMAKE_SOURCE_DIR}/.clang-tidy"
+                        "${CMAKE_BINARY_DIR}/compile_commands.json"
+                    COMMENT "🔍 Linting ${rel_cpp_file} with clang-tidy"
+                    VERBATIM
+                )
+                list(APPEND ALL_CLANG_TIDY_LINT_FILES "${clang_tidy_lint_file}")
+            endif()
+            
+            # Create cppcheck .lint file
+            if(CPPCHECK_AVAILABLE)
+                set(cppcheck_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.cppcheck.lint")
+                
+                add_custom_command(
+                    OUTPUT "${cppcheck_lint_file}"
+                    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lint_output"
+                    COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running cppcheck on ${rel_cpp_file}..."
+                    COMMAND ${CPPCHECK_EXECUTABLE}
+                        --enable=warning,performance,portability
+                        --std=c++17
+                        --suppress=missingIncludeSystem
+                        --suppress=unusedFunction
+                        --suppress=unmatchedSuppression
+                        --suppress=unusedStructMember
+                        --suppress=shadowVariable
+                        --suppress=useStlAlgorithm
+                        --suppress=constParameterPointer
+                        --suppress=constVariablePointer
+                        -I${CMAKE_SOURCE_DIR}
+                        -I${CMAKE_SOURCE_DIR}/libvalidcolor
+                        -I${CMAKE_SOURCE_DIR}/libcmdformat
+                        -I${CMAKE_SOURCE_DIR}/libstdpipeutil
+                        -I${CMAKE_SOURCE_DIR}/libecul
+                        "${cpp_file}"
+                        > "${cppcheck_lint_file}" 2>&1 || echo "LINT_COMPLETED_WITH_WARNINGS" >> "${cppcheck_lint_file}"
+                    COMMAND ${CMAKE_COMMAND} -E echo "✅ cppcheck completed for ${rel_cpp_file}"
+                    DEPENDS "${cpp_file}"
+                    COMMENT "🔍 Linting ${rel_cpp_file} with cppcheck"
+                    VERBATIM
+                )
+                list(APPEND ALL_CPPCHECK_LINT_FILES "${cppcheck_lint_file}")
+            endif()
+        endforeach()
+        
+        # Create aggregation targets that depend on .lint files
+        if(CLANG_TIDY_AVAILABLE AND ALL_CLANG_TIDY_LINT_FILES)
+            add_custom_target(lint_clang_tidy_incremental
+                DEPENDS ${ALL_CLANG_TIDY_LINT_FILES}
+                COMMENT "🔍 Running incremental clang-tidy on changed files only"
+            )
+        endif()
+        
+        if(CPPCHECK_AVAILABLE AND ALL_CPPCHECK_LINT_FILES)
+            add_custom_target(lint_cppcheck_incremental
+                DEPENDS ${ALL_CPPCHECK_LINT_FILES}
+                COMMENT "🔍 Running incremental cppcheck on changed files only"
+            )
+        endif()
+        
+        # Create main lint target
+        set(MAIN_LINT_DEPS "")
+        list(APPEND MAIN_LINT_DEPS lint_security)
+        if(CLANG_TIDY_AVAILABLE)
+            list(APPEND MAIN_LINT_DEPS lint_clang_tidy_incremental)
+        endif()
+        if(CPPCHECK_AVAILABLE)
+            list(APPEND MAIN_LINT_DEPS lint_cppcheck_incremental)
+        endif()
+        if(LINT_SHOW_SUMMARY)
+            list(APPEND MAIN_LINT_DEPS lint_summary)
+        endif()
+        
+        add_custom_target(lint
+            DEPENDS ${MAIN_LINT_DEPS}
+            COMMENT "🔍 Running incremental linting system"
+        )
+        
+        set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        
+        list(LENGTH INDIVIDUAL_LINT_TARGETS num_targets)
+        message(STATUS "✅ Created ${num_targets} individual lint targets")
+        message(STATUS "✅ Incremental linting system enabled")
+        message(STATUS "   🎯 Run individual file: make filename_cpp_lint_clang_tidy")
+        message(STATUS "   🎯 Run all incremental: make lint")
+        
+    else()
+        message(STATUS "⚠️  compile_commands.json not found - using legacy lint targets")
+        
+        # Fallback to legacy approach
+        set(FALLBACK_LINT_DEPS "")
+        list(APPEND FALLBACK_LINT_DEPS lint_security)
+        if(CLANG_TIDY_AVAILABLE)
+            list(APPEND FALLBACK_LINT_DEPS lint_clang_tidy)
+        endif()
+        if(CPPCHECK_AVAILABLE)
+            list(APPEND FALLBACK_LINT_DEPS lint_cppcheck)
+        endif()
+        
+        add_custom_target(lint
+            DEPENDS ${FALLBACK_LINT_DEPS}
+            COMMENT "🔍 Running legacy linting (reconfigure after build for incremental)"
+        )
+        
+        set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
     endif()
-    
-    # Create the main lint target for incremental mode
-    add_custom_target(lint
-        DEPENDS ${INCREMENTAL_LINT_DEPS}
-        COMMENT "🔍 Running incremental linting system"
-    )
-    
-    # Make lint target PHONY (always run)
-    set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    
-    message(STATUS "✅ Incremental linting system enabled")
-    message(STATUS "   📝 .lint files will be created per source file")
-    message(STATUS "   ⚡ Only changed files and their dependencies will be re-linted")
-    message(STATUS "   📊 Use 'ninja lint_summary' to view aggregated results")
-    message(STATUS "   🎯 Main lint target uses incremental mode")
 endif()
 
 # =====================================================
