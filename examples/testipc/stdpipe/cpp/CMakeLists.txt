@@ -100,8 +100,8 @@ if(CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE)
     endif()
 endif()
 
-# clang-tidy target
-if(CLANG_TIDY_AVAILABLE)
+# clang-tidy target (only create if incremental linting is disabled)
+if(CLANG_TIDY_AVAILABLE AND NOT ENABLE_INCREMENTAL_LINTING)
 	message(STATUS "Collected source files for linting (right before use):")
 	foreach(src ${ALL_SOURCE_FILES})
 		message(STATUS "  ${src}")
@@ -125,8 +125,10 @@ if(CLANG_TIDY_AVAILABLE)
     
     # Make clang-tidy depend on having built at least one target to ensure compile_commands.json exists
     add_dependencies(lint_clang_tidy stdpipe_back)
-    
-    # Optional: Create a separate heavy clang-tidy target for thorough analysis
+endif()
+
+# Always create the full analysis target for manual use
+if(CLANG_TIDY_AVAILABLE)
     add_custom_target(lint_clang_tidy_full
         COMMAND ${CMAKE_COMMAND} -E echo "🔍 Running full clang-tidy analysis (includes system headers)..."
         COMMAND test -f ${CMAKE_BINARY_DIR}/compile_commands.json || (echo "❌ ERROR: compile_commands.json not found" && exit 1)
@@ -142,8 +144,8 @@ if(CLANG_TIDY_AVAILABLE)
     add_dependencies(lint_clang_tidy_full stdpipe_back)
 endif()
 
-# cppcheck target
-if(CPPCHECK_AVAILABLE)
+# cppcheck target (only create if incremental linting is disabled)
+if(CPPCHECK_AVAILABLE AND NOT ENABLE_INCREMENTAL_LINTING)
     add_custom_target(lint_cppcheck
         COMMAND ${CPPCHECK_EXECUTABLE}
             --enable=warning,performance,portability
