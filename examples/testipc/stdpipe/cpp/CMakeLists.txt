@@ -168,44 +168,46 @@ if(CPPCHECK_AVAILABLE)
     )
 endif()
 
-# Combined lint target
+# Combined lint target - will be configured later based on incremental linting availability
 set(LINT_DEPENDENCIES "")
 if(CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE)
     list(APPEND LINT_DEPENDENCIES lint_security)
 endif()
-if(CLANG_TIDY_AVAILABLE)
-    list(APPEND LINT_DEPENDENCIES lint_clang_tidy)
-endif()
-if(CPPCHECK_AVAILABLE)
-    list(APPEND LINT_DEPENDENCIES lint_cppcheck)
-endif()
 
-if(LINT_DEPENDENCIES)
-    add_custom_target(lint
-        DEPENDS ${LINT_DEPENDENCIES}
-        COMMENT "🔍 Running all available linters"
-    )
-
-    # Make lint target PHONY (always run)
-    set_target_properties(lint PROPERTIES
-        EXCLUDE_FROM_ALL FALSE
-    )
-
+# Only create legacy lint targets when incremental linting is disabled
+if(NOT ENABLE_INCREMENTAL_LINTING)
     if(CLANG_TIDY_AVAILABLE)
-        set_target_properties(lint_clang_tidy PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        list(APPEND LINT_DEPENDENCIES lint_clang_tidy)
     endif()
     if(CPPCHECK_AVAILABLE)
-        set_target_properties(lint_cppcheck PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        list(APPEND LINT_DEPENDENCIES lint_cppcheck)
     endif()
-    set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-    message(STATUS "✅ Lint target created with: ${LINT_DEPENDENCIES}")
-else()
-    # Create a dummy lint target that shows warnings
-    add_custom_target(lint
-        COMMAND ${CMAKE_COMMAND} -E echo "❌ No linters available - install clang-tidy and/or cppcheck"
-        COMMENT "⚠️  Linters not available"
-    )
+    
+    if(LINT_DEPENDENCIES)
+        add_custom_target(lint
+            DEPENDS ${LINT_DEPENDENCIES}
+            COMMENT "🔍 Running all available linters (legacy mode)"
+        )
+        
+        # Make lint target PHONY (always run)
+        set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        
+        if(CLANG_TIDY_AVAILABLE)
+            set_target_properties(lint_clang_tidy PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        endif()
+        if(CPPCHECK_AVAILABLE)
+            set_target_properties(lint_cppcheck PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        endif()
+        set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        
+        message(STATUS "✅ Legacy lint target created with: ${LINT_DEPENDENCIES}")
+    else()
+        # Create a dummy lint target that shows warnings
+        add_custom_target(lint
+            COMMAND ${CMAKE_COMMAND} -E echo "❌ No linters available - install clang-tidy and/or cppcheck"
+            COMMENT "⚠️  Linters not available"
+        )
+    endif()
 endif()
 
 # =====================================================

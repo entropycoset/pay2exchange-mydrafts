@@ -125,3 +125,4 @@ State get_state() {
 
 } // namespace colordetect
 
+// Test comment

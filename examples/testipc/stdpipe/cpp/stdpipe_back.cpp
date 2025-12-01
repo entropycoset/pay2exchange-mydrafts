@@ -1,3 +1,4 @@
+// a
 #include <iostream>
 #include <string>
 #include <stdexcept>
@@ -159,7 +160,7 @@ private:
 		}
 
 public:
-		StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "", 
+		StdPipeController(const std::string& server_path, const std::string& cleanup_exec_prog = "",
 			StdOutErrMode stdouterr_mode = StdOutErrMode::OutErrModeDirect,
 			const std::string& mode = "", const std::vector<std::string>& server_args = {})
 				: m_stdouterr_mode(stdouterr_mode) {
@@ -1041,3 +1042,4 @@ int main(int argc, char* argv[]) {
 				return 2;
 		}
 }
+// Test change
