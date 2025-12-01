@@ -269,8 +269,8 @@ size_t count_open_fd() {
 			"int max value must fit in long for safe strtol parsing");
 		static_assert(std::numeric_limits<int>::min() >= std::numeric_limits<long>::min(),
 			"int min value must be representable in long");
-		static_assert(std::is_signed<int>::value == std::is_signed<long>::value,
-			"int and long must have same signedness for safe conversion"); // NOLINT(misc-redundant-expression)
+		static_assert(std::is_signed<int>::value == std::is_signed<long>::value, // NOLINT(misc-redundant-expression)
+			"int and long must have same signedness for safe conversion");
 
 		DIR* fd_dir = safe_opendir("/proc/self/fd");
 
@@ -335,7 +335,7 @@ size_t close_unwanted_fds(std::vector<int> fd_allowed) {
 									"int max value must fit in long for safe strtol parsing");
 		static_assert(std::numeric_limits<int>::min() >= std::numeric_limits<long>::min(),
 									"int min value must be representable in long");
-		static_assert(std::is_signed<int>::value == std::is_signed<long>::value,
+		static_assert(std::is_signed<int>::value == std::is_signed<long>::value, // NOLINT(misc-redundant-expression)
 									"int and long must have same signedness for safe conversion");
 
 		// Deduplicate and sort the allowed FDs vector
