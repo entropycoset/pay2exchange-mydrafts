@@ -9,12 +9,88 @@
 #include <string_view>
 #include <mutex>
 #include <chrono>
+#include <random>
 
 // ODR fallback for project name detection - user should define this in their code
 // If not defined, get_project_name() will return "unknown"
+// TODO move this^
 
 namespace ecul {
 
+
+namespace detail {
+    inline thread_local std::mt19937 thread_local_pseudorandom{std::random_device{}()};
+}
+
+template <typename T>
+T safe_pseudorandom(T min, T max) {
+    if (min > max) {
+        throw std::invalid_argument("safe_pseudorandom: min > max");
+    }
+    std::uniform_int_distribution<T> dist(min, max);
+    return dist(detail::thread_local_pseudorandom);
+}
+
+/// Some memory that can be dropped in parts to regain memory for emergency. Can be then restored.
+/// Aborts (std::abort) in case of some of serious internal problems (e.g. program out of ram despite this)
+/// No special guarantees (not thread-safe, not concerend with SIOF, though doesn't use static data itself so should work before and after main if lifetime of this would allow)
+class MemBallast {
+protected:
+    bool emergency_free_tiny_or_abort(MemBallast *tiny_ballast) noexcept; ///< free my internal/tiny ballast (or abort if can't)
+    std::ostream &log_err(); ///< start a log line for internal error, goes to cerr
+
+public:
+    MemBallast(MemBallast *tiny_ballast, std::size_t bufferSize, std::size_t bufferCount, std::size_t buffMinimal);
+    virtual ~MemBallast();
+
+    /// Free just one buffer (last one) if available, return true if a buffer got freed now
+    bool emergency_free() noexcept;
+
+    // Again allocate buffers up to reasonable level, abort if not possible to achieve reasonable level
+    bool safe_rearm_or_abort() noexcept;
+
+    // Again allocate buffers up to the full condition (if possible?). Return: did we allocated all we wanted
+    bool safe_rearm_as_much() noexcept;
+    void clear_all_locked() noexcept; ///< quickly free all memory that we can, usually because we are about to terminate
+
+private:
+    MemBallast * m_tiny_ballast; ///< my "parent" (tiny) ballast, to use when I myself encounter problems and want to report internal problems (eg last problems with low memory)
+    std::size_t bufferSize_; ///< size of each buffer
+    std::size_t bufferCount_, buffMinimal_; ///< the expected amount of buffers, and the minimal amount before we decide memory is critically low still now
+    std::vector<char*> buffers_;
+};
+
+/// this class must be created just once (vs SIOF) - use instance pattern
+/// functions here are thread-safe because of integral mutex m_mtx. as for SIOF: does no special protection but also does not use static data.
+/// aiming to be safe everywhere if accessed via singleton
+class MemBallastComplete {
+protected:
+    MemBallast *m_normal, *m_tiny;
+    std::mutex m_mtx; ///< hold this mutex when accesing m_normal, m_tiny (and in dtor)
+
+    void free_all_we_will_die(); ///<  (thread-safe, internal mutex) free all we can (caller then should report problem and abort)
+
+public:
+    MemBallastComplete();
+    virtual ~MemBallastComplete();
+
+    void free_some_memory(); ///< (thread-safe, internal mutex) increase amount of free memory for emergencies (please later call repair)
+    void we_are_safe(); ///< (thread-safe, internal mutex) all is ok now to repair (again allocate ballast, if any was used up)
+};
+
+/// top level API to use memory emergency - should be able to call these static functions from any place also before/after main (SIOF-safe) and from threads
+/// due to it using instance_of_ballast to init the object when needed
+struct MemEmergencySys final {
+private:
+    static MemBallastComplete & instance_of_ballast();
+public:
+    static void free_some_memory(); ///< increase amount of free memory for emergencies (please later call repair)
+    static void we_are_safe(); ///< all is ok now to repair (again allocate ballast, if any was used up)
+};
+
+
+
+// TODO merge this with libvalidcolora (include that lib? but make it atomic?)
 // Color support (integrated from libvalidcolor)
 enum class Color : int {
     // Basic colors (0-7)
@@ -313,29 +389,33 @@ template<typename ExceptionType>
 // Action macros
 /// Call when abort-error occurred (critical, program is damaged, needs to terminate now).
 /// Program will log and abort here (function/macro does not return).
-#define ecul_abort(msg) do { ecul_log_abort(msg); std::abort(); } while(0)
+/// @usage: ecul_abort("Out of mem."); // program will terminate here
+#define ecul_abort(msg) do { ecul::MemEmergencySys::free_some_memory(); ecul_log_abort(msg); std::abort(); } while(0)
 
-/// When a stop-error occurred (one that means program should not resume normal operation)
-/// then run as: throw ecul_stop(msg). It will throw exception
+/// This expression creates stop-error you must immediatelly throw it, this should be used in case of stop-error
+/// @usage: throw ecul_stop(msg).
+/// (that is: an error that means program should not resume normal operation, but should quit soon, usually be propagating this exception to top of main()).
+/// It will throw exception
 /// ecul::critical_do_not_catch_exception_stop that should travel to top of main or other
 /// specialized place, as checked by linters if they apply.
-#define ecul_stop(msg) ecul::create_stop_exception((msg), ECUL_HERE())
+/// if you do catch this special exception with special catch for it then there return the memory to ecul::MemEmergencySys
+#define ecul_stop(msg) ( (ecul::MemEmergencySys::free_some_memory()) , ecul_log_stop(msg) , ecul::create_stop_exception((msg), ECUL_HERE()) )
 
 /// For normal errors that result in a throw - if such error occurs then do expression
 /// `throw ecul_erro_runtime(msg)` - it will log error, and you will throw it.
-#define ecul_erro_runtime(msg) std::runtime_error(msg); ecul_log_erro(msg)
+#define ecul_erro_runtime(msg) ( ecul_log_erro(msg) , std::runtime_error(msg) )
 
 /// For normal errors that result in a throw - if such error occurs then do expression
 /// `throw ecul_erro_what(your_exception(msg...))` - where your_exception(...) forms any
 /// expression compatible with .what() - it will log error from .what of your object,
 /// and you will throw it.
-#define ecul_erro_what(exception) ecul::create_logged_exception((exception), ECUL_HERE())
+#define ecul_erro_what(exception) ( ecul::create_logged_exception((exception), ECUL_HERE()) )
 
 /// For normal errors that result in a throw - if such error occurs then do expression
 /// `throw ecul_erro_msg(msg, your_exception(...))` - where your_exception(...) forms any
 /// expression - it will log error from msg, and if possible also from the .what() of
 /// your object, and you will throw it.
-#define ecul_erro_msg(msg, exception) ecul::create_logged_exception_with_msg((msg), (exception), ECUL_HERE())
+#define ecul_erro_msg(msg, exception) ( ecul::create_logged_exception_with_msg((msg), (exception), ECUL_HERE()) )
 
 #define ecul_warn(msg) ecul_log_warn(msg) ///< Just logs a warning, code continues
 #define ecul_info(msg) ecul_log_info(msg) ///< Simply logs an information

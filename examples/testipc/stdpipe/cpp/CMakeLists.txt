@@ -222,6 +222,12 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         COMMENT "📊 Generating lint summary report"
     )
     
+    # Create lintall target to show all lint file contents
+    add_custom_target(lintall
+        COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/ShowAllLintResults.cmake
+        COMMENT "📋 Displaying all lint results with file headers"
+    )
+    
     # Simple incremental linting - create individual targets for each .cpp file
     if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
         message(STATUS "🚀 Creating incremental lint targets for .cpp files")

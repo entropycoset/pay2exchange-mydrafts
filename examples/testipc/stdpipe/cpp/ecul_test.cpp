@@ -3,6 +3,14 @@
 #include <stdexcept>
 #include <string>
 
+// test ememrgency mem
+#include <iostream>
+#include <vector>
+#include <new>
+#include <cstddef>
+#include <mutex>
+#include <thread>
+
 // Override the project name function for this test
 namespace ecul {
     std::string get_project_name() {
@@ -68,13 +76,32 @@ void test_exception_throwing() {
     std::cout << "Exception throwing test completed.\n" << std::endl;
 }
 
+void stop_2() {
+    // This should terminate the program or propagate to top level
+    throw ecul_stop("Critical security violation detected - testing stop exception");
+}
+
+void stop_1() {
+    try {
+        stop_2();
+    } catch(const std::runtime_error & exc) {
+        std::cerr<<"Capture STOP here?! bad! xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n";
+    }
+}
+
 void test_critical_stop() {
     std::cout << "=== Test: Critical Stop Exception ===" << std::endl;
     std::cout << "WARNING: This will throw critical_do_not_catch_exception_stop!" << std::endl;
     std::cout << "The exception should NOT be caught by normal exception handlers." << std::endl;
 
-    // This should terminate the program or propagate to top level
-    throw ecul_stop("Critical security violation detected - testing stop exception");
+    try {
+        stop_1();
+    }
+
+    // UNSAFE_LINTER_IGNORE_CATCH_ALL
+    catch (const ecul::critical_do_not_catch_exception_stop & exc_stop) {
+        std::cout << "Captured the special STOP exception, good." << std::endl;
+    }
 }
 
 void test_abort() {
@@ -97,7 +124,58 @@ void show_usage(const char* program_name) {
     std::cout << "  all          - Run all safe tests (default)" << std::endl;
 }
 
+
+// Simulated workload that might cause bad_alloc.
+void stress_allocation() {
+    try {
+        // Try to allocate a large vector; likely to fail in constrained environments.
+        std::vector<int> big;
+        big.reserve(static_cast<std::size_t>(-1) / sizeof(int)); // exaggerated to provoke failure
+    } catch (const std::bad_alloc&) {
+        // Free one emergency buffer to ensure logging can proceed.
+        ecul::MemEmergencySys::free_some_memory();
+        std::cerr << "Caught bad_alloc in stress_allocation; \n";
+        throw;
+    }
+}
+
+int main_test_mem() {
+    // Demonstrate multi-threaded access to the emergency reserve.
+    std::thread t1([] {
+        try { stress_allocation(); }
+        // UNSAFE_LINTER_IGNORE_CATCH_ALL
+        catch (...) {}
+    });
+    std::thread t2([] {
+        try { stress_allocation(); }
+        // UNSAFE_LINTER_IGNORE_CATCH_ALL
+        catch (...) {}
+    });
+
+    t1.join();
+    t2.join();
+
+    // After handling, optionally rearm in a safe place.
+    try {
+        ecul::MemEmergencySys::we_are_safe();
+        std::cerr << "Emergency reserve re-armed successfully.\n";
+    } catch (const std::bad_alloc&) {
+        std::cerr << "Failed to re-arm emergency reserve; proceeding to shutdown.\n";
+    }
+
+    return 0;
+}
+
+int main2(int argc, char* argv[]);
+
 int main(int argc, char* argv[]) {
+    //std::cout<<"oktest\n";
+    main_test_mem();
+    main2(argc,argv);
+    return 1;
+}
+
+int main2(int argc, char* argv[]) {
     std::string test_type = "all";
 
     if (argc > 1) {

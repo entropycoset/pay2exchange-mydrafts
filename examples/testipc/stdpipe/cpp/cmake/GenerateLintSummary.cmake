@@ -18,8 +18,10 @@ if(NOT all_lint_files)
     return()
 endif()
 
-# Filter out files with only suppressed warnings (no actionable warnings)
+# Filter files: real warnings vs clean files
 set(files_with_real_warnings "")
+set(files_clean_but_linted "")
+
 foreach(lint_file ${all_lint_files})
     file(SIZE "${lint_file}" file_size)
     if(file_size GREATER 0)
@@ -29,6 +31,9 @@ foreach(lint_file ${all_lint_files})
         string(REGEX MATCH "warning:|error:|note:" has_actual_warnings "${file_content}")
         if(has_actual_warnings)
             list(APPEND files_with_real_warnings "${lint_file}")
+        else()
+            # File was linted but has no actionable warnings (only suppressed)
+            list(APPEND files_clean_but_linted "${lint_file}")
         endif()
     endif()
 endforeach()
@@ -36,17 +41,18 @@ endforeach()
 # Count files
 list(LENGTH all_lint_files total_files)
 list(LENGTH files_with_real_warnings files_with_warnings)
+list(LENGTH files_clean_but_linted files_clean)
 
-message(STATUS "Found ${total_files} .lint files (${files_with_warnings} with actionable warnings)")
+message(STATUS "Found ${total_files} .lint files (${files_with_warnings} with actionable warnings, ${files_clean} clean)")
 
 if(NOT files_with_real_warnings)
-    message(STATUS "🎉 All files passed linting with no actionable warnings!")
-    message(STATUS "   (Some files may have suppressed warnings from system headers)")
+    message(STATUS "🎉 All ${files_clean} linted files passed with no actionable warnings!")
+    message(STATUS "   (Files may have suppressed warnings from system headers)")
     message(STATUS "========================================")
     return()
 endif()
 
-# Show only files with actual actionable warnings
+# Show files with actual actionable warnings
 message(STATUS "")
 message(STATUS "⚠️  FILES WITH ACTIONABLE WARNINGS:")
 
@@ -71,6 +77,9 @@ foreach(lint_file ${files_with_real_warnings})
     
     message(STATUS "  📄 ${rel_lint_file} (${tool}) - ${warning_count} warnings")
 endforeach()
+
+message(STATUS "")
+message(STATUS "✅ ${files_clean} files linted with no actionable warnings (clean)")
 
 message(STATUS "")
 message(STATUS "💡 View lint results:")

@@ -3,11 +3,11 @@
 #include <iomanip>
 #include <chrono>
 #include <sstream>
-#include <fstream>
 #include <unistd.h>
 #include <atomic>
 #include <mutex>
 #include <iomanip>
+
 
 namespace ecul {
 
@@ -243,9 +243,9 @@ std::string get_binary_name() {
         } else {
             cached_name = full_path;
         }
+    }
     // UNSAFE_LINTER_IGNORE_CATCH_ALL
-    // TODO check is this OK to catch-all in binary name detection. XXX security
-    } catch (...) {
+    catch (...) {
         cached_name = "unknown";
     }
 
@@ -383,5 +383,177 @@ critical_do_not_catch_exception_stop create_stop_exception(const std::string& me
     log_stop(message, location);
     return critical_do_not_catch_exception_stop(message, location);
 }
+
+// ---
+
+bool MemBallast::emergency_free_tiny_or_abort(MemBallast *tiny_ballast) noexcept {
+    if (!tiny_ballast) {
+        log_err() << "I don't have tiny-ballast to use here (null) - will abort now!" << std::endl;
+        std::abort();
+    }
+    tiny_ballast->emergency_free();
+
+    return true; //TODO check if we managed to drop someting there
+}
+
+std::ostream & MemBallast::log_err() {
+    std::ostream &out = std::cerr;
+    out << "ERROR: In MemBallast@" << (static_cast<void*>(this)) << ": ";
+    return out;
+}
+
+MemBallast::MemBallast(MemBallast *tiny_ballast, std::size_t bufferSize, std::size_t bufferCount, std::size_t buffMinimal)
+    : m_tiny_ballast(tiny_ballast), bufferSize_(bufferSize), bufferCount_(bufferCount), buffMinimal_(buffMinimal)
+{ }
+
+bool MemBallast::emergency_free() noexcept {
+    try {
+        if (!buffers_.empty()) {
+            delete[] buffers_.back();
+            buffers_.pop_back();
+            buffers_.shrink_to_fit();
+        }
+    } catch(const std::runtime_error &exc) { // probably not possible
+        this->emergency_free_tiny_or_abort(m_tiny_ballast);
+        log_err() << "some exception during emergency_free() : " << exc.what();
+        return false; // !
+    }
+    return true;
+}
+
+// Again allocate buffers up to reasonable level, abort if not possible to achieve reasonable level
+bool MemBallast::safe_rearm_or_abort() noexcept {
+    this->safe_rearm_as_much();
+    auto const current = buffers_.size();
+    if (current >= this->bufferCount_) return true; // very good
+    if (current >= this->buffMinimal_) return false; // not so great, but we can continue
+    { // else - we can't get any reasonable amount
+        this->clear_all_locked();
+        log_err() << "Can not restore ballast to even minimal safe level "
+                  << "need " << this->buffMinimal_ << " or better " << this->bufferCount_
+                  << "but got just " << current << "."
+                  << " - will abort now!" << std::flush;
+        std::abort();
+    }
+}
+
+// Again allocate buffers up to the full condition (if possible?). Return: did we allocated all we wanted
+bool MemBallast::safe_rearm_as_much() noexcept {
+    try {
+        try {
+            buffers_.reserve(bufferCount_);
+        } catch (std::bad_alloc &) {
+            this->emergency_free_tiny_or_abort(m_tiny_ballast);
+            log_err() << "Warning: totally out of memory (in MemBallast, reserve)\n" << std::flush;
+            return false;
+        }
+
+        for (std::size_t i = buffers_.size(); i < bufferCount_; ++i) {
+            char* block = new (std::nothrow) char[bufferSize_];
+            if (!block) {
+                /*
+                this->emergency_free_tiny_or_abort(m_tiny_ballast);
+                std::cerr << "Warning: out of memory (in MemBallast, new block)\n" << std::flush;
+                std::cerr << "Warning: out of memory: MemBallast failed to allocate buffer index="
+                          << i << " of size " << bufferSize_ << " bytes.\n";
+                */
+                return false; // !
+            }
+            buffers_.push_back(block);
+        }
+    } catch (std::runtime_error &exc) {
+        this->emergency_free_tiny_or_abort(m_tiny_ballast);
+        log_err() << "Warning: memory: in balast: problems (in MemBallast, general)\n" << std::flush;
+        log_err() << "Warning: memory: in balast: rearm got exception: " << std::flush << exc.what() << std::endl;
+        return false; // !
+    }
+    return true;
+}
+
+MemBallast::~MemBallast() {
+    clear_all_locked();
+}
+
+void MemBallast::clear_all_locked() noexcept {
+    for (char* block : buffers_) {
+        delete[] block;
+    }
+    buffers_.clear();
+    buffers_.shrink_to_fit();
+}
+
+// ---
+
+MemBallastComplete & MemEmergencySys::instance_of_ballast() {
+    static MemBallastComplete obj; // safe init (thread-safe and SIOF-safe)
+    return obj;
+}
+
+void MemEmergencySys::free_some_memory() {
+    instance_of_ballast().free_some_memory();
+}
+
+void MemEmergencySys::we_are_safe() {
+    instance_of_ballast().we_are_safe();
+}
+
+// ---
+
+MemBallastComplete::MemBallastComplete() {
+    try {
+        m_tiny = new MemBallast(nullptr, 16*1024, 32, 24);
+        m_normal = new MemBallast(m_tiny, 64*1024, 16, 8);
+    }
+    catch (const std::runtime_error & exc) {
+        std::cerr << "ERROR: low memory? Failed to even init the MemBallastComplete - will abort now!" << std::endl;
+        std::abort();
+    }
+    bool rearm_ok = [this]() -> bool {
+        if (! m_tiny->safe_rearm_or_abort()) return false;
+        if (! m_normal->safe_rearm_or_abort()) return false;
+        return true;
+    }() ;
+    if (!rearm_ok) {
+        m_normal->emergency_free();
+        // a bit dead code it probably aborted above in this case _or_abort()
+        std::cerr << "ERROR: low memory? Failed to arm the MemBallastComplete - on ctor - will abort now!" << std::endl;
+        std::abort();
+    }
+}
+
+MemBallastComplete::~MemBallastComplete() {
+    // wold lock_guard here if not empty.
+
+    // on purpose do NOT free any memory, program is ending now anyway
+}
+
+void MemBallastComplete::free_some_memory() {
+    std::lock_guard<std::mutex> lg(this->m_mtx);
+    m_normal->emergency_free();
+}
+
+void MemBallastComplete::free_all_we_will_die() {
+    std::lock_guard<std::mutex> lg(this->m_mtx);
+    m_normal->clear_all_locked();
+    m_tiny->clear_all_locked();
+    // not deleting the pointer-vars on purpose (avoid potential nullptr?)
+}
+
+void MemBallastComplete::we_are_safe() {
+    std::lock_guard<std::mutex> lg(this->m_mtx);
+    bool rearm_ok = [this]() -> bool {
+        if (! m_tiny->safe_rearm_or_abort()) return false;
+        if (! m_normal->safe_rearm_or_abort()) return false;
+        return true;
+    }() ;
+    if (!rearm_ok) {
+        m_normal->emergency_free();
+        std::cerr << "ERROR: low memory? Failed to arm the MemBallastComplete - in runtime - will abort now!" << std::endl;
+        std::abort();
+    }
+}
+
+// ---
+
 
 } // namespace ecul
