@@ -11,6 +11,15 @@
 
 namespace ecul {
 
+// ---
+
+mkstr& mkstr::operator<<(std::ostream& (*manip)(std::ostream&)) {
+    oss << manip;
+    return *this;
+}
+
+mkstr::operator std::string() const { return oss.str(); }
+
 // Global settings instance with thread-safe singleton pattern
 LogSettings& get_log_settings() {
     static LogSettings instance;

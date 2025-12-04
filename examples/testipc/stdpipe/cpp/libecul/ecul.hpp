@@ -10,12 +10,35 @@
 #include <mutex>
 #include <chrono>
 #include <random>
+#include <sstream>
 
 // ODR fallback for project name detection - user should define this in their code
 // If not defined, get_project_name() will return "unknown"
 // TODO move this^
 
 namespace ecul {
+
+/// @example someprint( mkstr() << a << 123 << "foo" << std::setw(10) << c );
+class mkstr final {
+    std::ostringstream oss;
+public:
+    mkstr() = default;
+
+    // do not copy/move, just use in place in one expression (that is the intended use)
+    mkstr(const mkstr&) = delete;
+    mkstr(mkstr&&) = delete;
+    mkstr& operator=(const mkstr&) = delete;
+    mkstr& operator=(mkstr&&) = delete;
+
+    template<typename T>
+    mkstr& operator<<(const T& value) {
+        oss << value;
+        return *this;
+    }
+
+    mkstr& operator<<(std::ostream& (*manip)(std::ostream&));
+    operator std::string() const; ///< should decay to a string object faciliating the intended use as expression print(mkstr()<<....<<....)
+};
 
 
 namespace detail {

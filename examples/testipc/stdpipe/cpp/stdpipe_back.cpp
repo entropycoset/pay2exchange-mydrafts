@@ -16,6 +16,10 @@
 #include <boost/process.hpp>
 #include <nlohmann/json.hpp>
 #include <sstream>
+
+#include <ctime>
+#include <limits>
+
 #include "libvalidcolor/libvalidcolor.hpp"
 #include "libcmdformat/libcmdformat.hpp"
 #include "libstdpipeutil/libstdpipeutil.hpp"
@@ -73,7 +77,7 @@ public:
 		/// Get the file descriptor, it will be valid FD (otherwise we throw)
 		int get_fd() const {
 			if (!is_open()) {
-				ecul_stop("Tried to use invalid/closed FD");
+				throw ecul_stop("Tried to use invalid/closed FD");
 			}
 			return m_fd;
 		}
@@ -81,7 +85,7 @@ public:
 		// Set the file descriptor and ownership. The _fd must be valid (>=-1) otherwise throws and leave object unchanged
 		void set_fd(int _fd, bool _owned) {
 				if (!(_fd>=0)) {
-					ecul_stop("Invalid fd being set");
+					throw ecul_stop("Invalid fd being set");
 				}
 				close(); // Close existing if owned
 				m_fd = _fd;
@@ -172,7 +176,7 @@ public:
 				// Always use v1lenend format now that both client and server support it
 				m_cmdformat = CmdFormat::cmdformat_v1lenend;
 				if (server_path.empty()) {
-						ecul_stop("Server path cannot be empty");
+						throw ecul_stop("Server path cannot be empty");
 				}
 
 				ecul_log_info("StdPipeController: Starting server process: " + server_path);
@@ -287,7 +291,7 @@ public:
 														// Parent process - wrap pid in boost::process child
 														server_process = bp::child(pid);
 												} else {
-														ecul_stop("Failed to fork child process");
+														throw ecul_stop("Failed to fork child process");
 												}
 												break;
 										}
@@ -316,6 +320,7 @@ public:
 
 								switch (m_stdouterr_mode) {
 										case StdOutErrMode::OutErrModeHide:
+												ecul_info("Mode: hide");
 												server_process = bp::child(
 														cleanup_exec_prog,
 														"--run",
@@ -330,6 +335,7 @@ public:
 												);
 												break;
 										case StdOutErrMode::OutErrModeCapture: {
+												ecul_info("Mode: capture");
 												// For cleanup_exec path, use manual fork/exec as well
 												pid_t pid = stdpipeutil::check_syscall(fork(), "fork");
 												if (pid == 0) {
@@ -355,12 +361,12 @@ public:
 														// Parent process - wrap pid in boost::process child
 														server_process = bp::child(pid);
 												} else {
-														ecul_stop("Failed to fork child process");
+														throw ecul_stop("Failed to fork child process");
 												}
 												break;
 										}
 										case StdOutErrMode::OutErrModeDirect:
-										default:
+												ecul_info("Mode: Direct");
 												server_process = bp::child(
 														cleanup_exec_prog,
 														"--run",
@@ -375,6 +381,8 @@ public:
 														bp::std_in.close()
 												);
 												break;
+										default:
+												throw ecul_erro_runtime("Unknown mode");
 								}
 						}
 
@@ -395,7 +403,7 @@ public:
 						std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 						if (!server_process.running()) {
-								ecul_stop("Failed to start server process");
+								throw ecul_stop("Failed to start server process");
 						}
 
 						ecul_log_info("StdPipeController: Server process started successfully");
@@ -437,7 +445,7 @@ public:
 
 						int fd = cmd_pipe.side_write().get_fd();
 						if (fd < 0 || fd >= FD_SETSIZE) {
-								ecul_stop("Invalid file descriptor for write select(): " + std::to_string(fd));
+								throw ecul_stop("Invalid file descriptor for write select(): " + std::to_string(fd));
 						}
 
 						FD_SET(fd, &write_fds);
@@ -449,11 +457,11 @@ public:
 						int select_result = stdpipeutil::check_syscall(select(fd + 1, nullptr, &write_fds, nullptr, &timeout_val), "select write");
 
 						if (select_result == 0) {
-								ecul_stop("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
+								throw ecul_stop("Timeout writing command to pipe (" + std::to_string(max_timeout.count()) + " seconds)");
 						}
 
 						if (!FD_ISSET(fd, &write_fds)) {
-								ecul_stop("select() returned but FD is not ready for writing");
+								throw ecul_stop("select() returned but FD is not ready for writing");
 						}
 
 						// Use libcmdformat to encode the command
@@ -465,7 +473,7 @@ public:
 						ssize_t bytes_written = stdpipeutil::check_syscall(write(fd, formatted_command.c_str(), formatted_command.length()), "write");
 
 						if (bytes_written != static_cast<ssize_t>(formatted_command.length())) {
-								ecul_stop("Partial write to command pipe: " + std::to_string(bytes_written) +
+								throw ecul_stop("Partial write to command pipe: " + std::to_string(bytes_written) +
 																				" of " + std::to_string(formatted_command.length()) + " bytes written");
 						}
 						ecul_log_info("StdPipe...: written the command into pipe - done sending.");
@@ -482,7 +490,7 @@ public:
 
 						int fd = resp_pipe.side_read().get_fd();
 						if (fd < 0 || fd >= FD_SETSIZE) {
-								ecul_stop("Invalid file descriptor for select(): " + std::to_string(fd));
+								throw ecul_stop("Invalid file descriptor for select(): " + std::to_string(fd));
 						}
 
 						FD_SET(fd, &read_fds);
@@ -496,12 +504,12 @@ public:
 						ecul_log_info("StdPipe...: Reading the reply - done...");
 
 						if (select_result == 0) {
-								ecul_stop("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
+								throw ecul_stop("Timeout waiting for server response (" + std::to_string(max_timeout.count()) + " seconds)");
 						}
 
 						// Verify the FD is actually ready for reading
 						if (!FD_ISSET(fd, &read_fds)) {
-								ecul_stop("select() returned but FD is not ready for reading");
+								throw ecul_stop("select() returned but FD is not ready for reading");
 						}
 
 						// Create a proper stream from the file descriptor and let libcmdformat handle the reading
@@ -847,6 +855,165 @@ void print_usage(const std::string& program_name) {
 		ecul_log_info("");
 }
 
+
+
+
+namespace n_nodes_invite {
+
+struct ParsedChainsysInvite {
+    std::string chain_subnet;
+    std::string ip_net_ip;
+    std::string chainid;
+    std::time_t genesis_timestamp{};
+    bool valid;
+
+    // Default ctor: invalid object
+    ParsedChainsysInvite() 
+        : chain_subnet(), ip_net_ip(), chainid(), genesis_timestamp(0), valid(false) {}	
+};
+
+std::ostream& operator<<(std::ostream &stre, const ParsedChainsysInvite &obj) {
+	if (! obj.valid) return stre << "(invalid invite)";
+	return stre << "[" << obj.chain_subnet << ',' << obj.ip_net_ip << ',' << obj.chainid << ',' << obj.genesis_timestamp << "]";
+}
+
+ParsedChainsysInvite parse_chainsys_invite(const std::string& input, std::string& out_msg);
+
+ParsedChainsysInvite parse_any_invite() {
+    // listAbstractSockets
+	using ecul::mkstr;
+	const std::string fn_socklist("/proc/net/unix");
+    std::ifstream procFile(fn_socklist);
+    if (!procFile.is_open()) throw ecul_erro_runtime(mkstr()<<"Failed to open ["<<fn_socklist<<"]");
+
+    std::string line;
+    if (!std::getline(procFile, line)) throw ecul_erro_runtime(mkstr()<<"Failed to read header ["<<fn_socklist<<"]");
+	size_t cnt_abstr = 0; // how many _abstract_ sockets we so far considered from that file
+
+    while (true) { // iterate all unix sockets in that file
+        if (!std::getline(procFile, line)) {
+            if (procFile.eof()) break; // normal end
+			throw ecul_erro_runtime(mkstr()<<"Error on reading next line from ["<<fn_socklist<<"]");
+        }
+
+        std::istringstream iss(line);
+        std::string field;
+        // Skip first 7 fields (columns)
+        for (int i = 0; i < 7; ++i) {
+            if (!(iss >> field)) {
+                // Malformed line, skip safely
+                field.clear();
+                break;
+            }
+        }
+
+        std::string path;
+        if (!(iss >> path)) {
+            // No path field, skip safely
+            continue;
+        }
+
+        // Abstract sockets are shown with leading '@', on linux
+        if (!path.empty() && path[0] == '@') {
+			 // we found an abstract socket.
+			++cnt_abstr;
+			std::string msg;
+			ParsedChainsysInvite invite = parse_chainsys_invite(path, msg);
+			ecul_info(ecul::mkstr()<<"Not invite abstr socket: [" << path << "] because [" << msg << "]");
+			if (invite.valid) { // if that abstr.socet looks like our invite
+				ecul_info(mkstr() << "Found nodesys-invite: " << invite << " from abstract socket path [" << path << "]");
+				return invite; // ok return it
+			}
+        }
+    }
+	throw ecul_erro_runtime(mkstr() << "Can not find any invite, after checking " << cnt_abstr << " abstract sockets from " << fn_socklist);
+}
+ 
+ParsedChainsysInvite parse_chainsys_invite(const std::string& input, std::string& out_msg) {
+    const std::string prefix = "@bcNodes/p2e/1:";
+    if (input.size() <= prefix.size()) {
+        out_msg = "Input too short";
+        return ParsedChainsysInvite();
+    }
+    if (input.rfind(prefix, 0) != 0) {
+        out_msg = "Missing or incorrect prefix";
+        return ParsedChainsysInvite();
+    }
+
+    std::string rest = input.substr(prefix.size());
+    if (rest.empty()) {
+        out_msg = "No data after prefix";
+        return ParsedChainsysInvite();
+    }
+
+    // Split by underscores
+    size_t firstUnd = rest.find('_');
+    if (firstUnd == std::string::npos || firstUnd == 0) {
+        out_msg = "First underscore missing or misplaced";
+        return ParsedChainsysInvite();
+    }
+
+    size_t secondUnd = rest.find('_', firstUnd + 1);
+    if (secondUnd == std::string::npos || secondUnd <= firstUnd + 1) {
+        out_msg = "Second underscore missing or misplaced";
+        return ParsedChainsysInvite();
+    }
+
+    size_t thirdUnd = rest.find('_', secondUnd + 1);
+    if (thirdUnd == std::string::npos || thirdUnd <= secondUnd + 1) {
+        out_msg = "Third underscore missing or misplaced";
+        return ParsedChainsysInvite();
+    }
+
+    ParsedChainsysInvite result;
+
+    result.chain_subnet = rest.substr(0, firstUnd);
+    result.ip_net_ip    = rest.substr(firstUnd + 1, secondUnd - firstUnd - 1);
+    result.chainid      = rest.substr(secondUnd + 1, thirdUnd - secondUnd - 1);
+    std::string tsStr   = rest.substr(thirdUnd + 1);
+
+    if (result.chain_subnet.empty()) {
+        out_msg = "Chain subnet is empty";
+        return ParsedChainsysInvite();
+    }
+    if (result.ip_net_ip.empty()) {
+        out_msg = "IP/net string is empty";
+        return ParsedChainsysInvite();
+    }
+    if (result.chainid.empty()) {
+        out_msg = "Chain ID is empty";
+        return ParsedChainsysInvite();
+    }
+    if (tsStr.empty()) {
+        out_msg = "Timestamp is empty";
+        return ParsedChainsysInvite();
+    }
+
+    // Parse timestamp safely with istringstream
+    std::istringstream iss(tsStr);
+    long long ts;
+    if (!(iss >> ts)) {
+        out_msg = "Timestamp is not a valid integer";
+        return ParsedChainsysInvite();
+    }
+    char leftover;
+    if (iss >> leftover) {
+        out_msg = "Extra characters after timestamp";
+        return ParsedChainsysInvite();
+    }
+    if (ts < 0 || ts > std::numeric_limits<std::time_t>::max()) {
+        out_msg = "Timestamp out of range";
+        return ParsedChainsysInvite();
+    }
+
+    result.genesis_timestamp = static_cast<std::time_t>(ts);
+    result.valid = true;
+    out_msg.clear(); // no error
+    return result;
+}
+
+} // namespace
+
 /**
  * StdPipe Backend Controller
  *
@@ -890,9 +1057,13 @@ int main(int argc, char* argv[]) {
 				std::vector<std::string> argvect;
 				for (int i = 0; i < argc; ++i) {
 						if (argv[i] == nullptr) {
-								ecul_stop("Null argv element at index " + std::to_string(i));
+								throw ecul_stop("Null argv element at index " + std::to_string(i));
 						}
 						argvect.push_back(std::string(argv[i]));
+				}
+				ecul_info((std::ostringstream()<<"Number of arguments: "<<argvect.size()<<".").str());
+				for (const auto & one : argvect) {
+					ecul_info((std::ostringstream()<<"argument [" << one << "]").str());
 				}
 
 				// Parse arguments - look for "--" separator
@@ -999,13 +1170,16 @@ int main(int argc, char* argv[]) {
 				std::string actual_server_path = server_path;
 				std::vector<std::string> server_args;
 
+				n_nodes_invite::ParsedChainsysInvite invite = n_nodes_invite::parse_any_invite();
+				ecul_log_info((std::ostringstream()<<"Got chainsys-invite: " << invite).str());
+
 				if (mode == "demo" && (submode == "demo1" || submode == "gdgp")) {
 						// Use cli_wallet for demo modes that need get_dynamic_global_properties
 						actual_server_path = "/home/joe/work/pay2exchange-core/use/programs/cli_wallet/cli_wallet";
 						server_args = {
 						// RUNTIME change this runtime. TODO fixme FIXME
-								"--server-rpc-endpoint=ws://127.0.0.3:1025",
-								"--chain-id", "810b4c0595713de686ba9e9191997b86b3da7b3edd022071a86d2efd1ef4c31b",
+								ecul::mkstr()<<"--server-rpc-endpoint=ws://"<<invite.ip_net_ip<<":1025", //"--server-rpc-endpoint=ws://127.0.0.99:1025",
+								"--chain-id", invite.chainid,
 								"--mutelog"  // Use --mutelog instead of --daemon to suppress logging but still enable pipe handling
 						};
 						// Note: --cmd-pipe XXX,YYY will be added dynamically with actual FD numbers
