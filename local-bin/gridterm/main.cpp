@@ -32,6 +32,23 @@
 #include <QInputDialog>
 #include <QFontDatabase>
 #include <qtermwidget.h>
+
+
+
+#include <QApplication>
+#include <QWidget>
+#include <QTextEdit>
+#include <QVBoxLayout>
+#include <QPointer>
+#include <QThread>
+#include <QObject>
+#include <QDebug>
+#include <QString>
+#include <thread>
+#include <chrono>
+#include <iostream>
+
+
 #include "myterm.hpp"
 #include "loopbackfinder.h"
 
@@ -58,11 +75,112 @@ namespace FontConstants {
 #include <fstream>
 #include <unistd.h>
 
+
+class StartupPanel;
+class Logger {
+public:
+    Logger()=default;
+    virtual ~Logger()=default;
+
+    Logger(const Logger&) = delete;
+    Logger& operator=(const Logger&) = delete;
+
+    void attachPanel(StartupPanel *panel) {
+        panelRef = panel;
+    }
+
+    static void log(const std::string &msg);
+    static void log(const QString &msg);
+    static void log(const char *msg);
+    static Logger & instance(); ///< the single logger to be used.
+
+private:
+    QPointer<StartupPanel> panelRef;
+    void appendLog(const std::string &msg);
+    void appendLog(const QString &msg);
+};
+
+void error_gui(const QString& message);
+void error_gui(const std::string& message) { error_gui( QString::fromStdString(message) ); }
+void error_gui(const char* message) { error_gui(std::string(message)); }
+
+
 QString expandTilde(const QString &path) {
     if (path == "~") { return QDir::homePath(); }
     if (path.startsWith("~/")) { return QDir::homePath() + path.mid(1); }
     return path;
 }
+
+
+// Helper macro: always check thread affinity (for Qt/GUI and thread-safety)
+#define ENSURE_THREAD(expectedThread) \
+do { \
+        if (QThread::currentThread() != (expectedThread)) { \
+            qFatal("Thread check failed!\n" \
+                   "  Current=%p Expected=%p\n" \
+                   "  File: %s\n" \
+                   "  Line: %d\n" \
+                   "  Function: %s", \
+                   QThread::currentThread(), \
+                   (expectedThread), \
+                   __FILE__, \
+                   __LINE__, \
+                   __PRETTY_FUNCTION__); \
+    } \
+} while (0)
+
+namespace n_unixsockabs {
+#include <stdexcept>
+#include <string>
+#include <cstring>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+/// Create and bind an abstract UNIX datagram socket.
+/// @param name The abstract namespace identifier (without leading '\0').
+/// @return The bound socket file descriptor.
+/// @throws std::runtime_error on error.
+int create_and_bind_abstract_socket(const std::string& name) {
+    if (name.empty()) {
+        throw std::runtime_error("Socket name must not be empty");
+    }
+    if (name.size() >= sizeof(sockaddr_un::sun_path)) {
+        throw std::runtime_error("Socket name too long for sun_path");
+    }
+    if (name.size() >= 1024) { // just double check so it dosn't break in calculations below (even if not the sun_path limit)
+        throw std::runtime_error("Socket name too long (for sun_path)safe)");
+    }
+
+    // Create socket
+    int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        throw std::runtime_error("socket() failed: " + std::string(strerror(errno)));
+    }
+
+    // Prepare sockaddr_un
+    struct sockaddr_un addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+
+    // since this is abstract namespace: first byte of sun_path is '\0'
+    addr.sun_path[0] = '\0';
+    std::memcpy(addr.sun_path + 1, name.data(), name.size());
+
+    // Length is family + NUL + name length
+    socklen_t len = static_cast<socklen_t>(sizeof(sa_family_t) + 1 + name.size());
+
+    if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), len) == -1) {
+        int err = errno;
+        close(fd);
+        throw std::runtime_error("bind() failed: " + std::string(strerror(err)));
+    }
+
+    return fd;
+}
+
+} // namespace
+
 
 std::string usage() {
     return "program CWD BLOCKCHAIN MYNODE NODES_COUNT_WIT NODES_COUNT_USER \n"
@@ -312,10 +430,12 @@ struct FontSettings {
 };
 
 /// settings for this simulation/word
+/// new idea: also include state of world here (done for chainid; TODO ip/port)
 struct WorldSettings {
     typedef decltype( std::time(nullptr) ) t_timestamp;
     const t_timestamp genesis_timestamp;
-    std::string chaindid_str; ///< the ChainID but as string with hex
+
+    WorldSettings(t_timestamp genesis_timestamp) : genesis_timestamp(genesis_timestamp) { }
 
     std::string run_id() const {
         std::ostringstream oss;
@@ -323,7 +443,46 @@ struct WorldSettings {
         return oss.str();
     }
 
-    WorldSettings(t_timestamp genesis_timestamp) : genesis_timestamp(genesis_timestamp) { }
+    void set_chainid(const std::string &id) {
+        Logger::log((std::ostringstream() << "world: set chainid [" << id << "]").str());
+        chainid = id;
+        has_chainid=true;
+        maybe_react_info1();
+    }
+    std::string get_chainid() const {
+        if (!has_chainid) throw std::runtime_error("Trying to get chainid but not yet set");
+        return chainid;
+    }
+    void set_ip_net(const std::string &ip, int port) {
+        Logger::log((std::ostringstream()<<"world: set IP: " << ip).str());
+        ip_net_ip=ip; ip_net_port=port;
+        has_ip_net=true;
+        maybe_react_info1();
+    }
+    void maybe_react_info1() {
+        if (has_chainid && has_ip_net && (!reacted_to_info1)) {
+            reacted_to_info1=true;
+            std::ostringstream mk_name;
+            std::string chain_subnet = "D";
+            mk_name << "bcNodes/p2e/1:" << chain_subnet << "_" << ip_net_ip << "_" << chainid << "_" << genesis_timestamp ;
+            const std::string name = ( mk_name ).str();
+            const int len_limit = 106; // the reasonable size of name. actually 107 is ok too but lets limit it
+            if (name.size() > len_limit) {
+                error_gui( (std::ostringstream() << "Too long resulting name/sys-invite: size: " << name.size() << " limit " << len_limit ).str() );
+            }
+            Logger::log((std::ostringstream()<<"sys-invite: announce our nodes with: abstrsocket with name: [" << name << "]").str());
+            n_unixsockabs::create_and_bind_abstract_socket(name);
+        }
+    }
+
+private:
+    bool has_chainid=false;
+    std::string chainid="";
+    bool has_ip_net=false;
+    std::string ip_net_ip="";
+    int ip_net_port=0;
+    bool reacted_to_info1=false;
+
 };
 
 struct TerminalWindowSettings {
@@ -335,12 +494,12 @@ struct TerminalWindowSettings {
 
     std::string cfg_cwd, cfg_bc;
     int cfg_mynode, cfg_nodes_wit, cfg_nodes_user;
-    std::string chainid;
+    //std::string chainid;
     int main_ip_seg=-1; // the segment X in 127.0.0.X to be used as free IP for localhost for this world test
 };
 
-
 void error_gui(const QString& message) {
+    Logger::log((std::ostringstream()<<"Error (reported to GUI) : " << message.toStdString()).str());
     QMessageBox msgBox;
     msgBox.setIcon(QMessageBox::Critical);
     msgBox.setWindowTitle("Error");
@@ -357,6 +516,7 @@ void error_gui(const QString& message) {
 
 // Forward declarations
 class TerminalPanel;
+
 
 // StartupPanel - contains startup log and terminal
 class StartupPanel : public QWidget {
@@ -387,6 +547,7 @@ public:
         QSplitter *splitter = new QSplitter(Qt::Vertical, this);
 
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
+// TODONOW TODO        world->assign_logger
         mainLayout->setContentsMargins(5, 5, 5, 5);
         mainLayout->addWidget(splitter);
 
@@ -432,6 +593,7 @@ private slots:
     }
 
 private:
+    friend Logger; // the class needs to access our appendLog in lambda of signals it sends here
     void appendLog(const std::string &message, int level=0) { this->appendLog(QString::fromStdString(message),level); }
     void appendLog(const char * message, int level=0) { this->appendLog(std::string(message),level); }
     void appendLog(const QString &message, int level=0) {
@@ -496,10 +658,11 @@ class TerminalPanel : public QWidget {
 
 protected:
     std::shared_ptr<TerminalWindowSettings> m_settings;
+    std::shared_ptr<WorldSettings> world;
+
     QVector<MyTerm*> terminals; ///< the terminal widgets. these are Qt-like objects, they are owned (memory) by the GUI parent etc
     QVector<MyTerm*> terminals_node_any; ///< the terminal widgets that leads to any-node with number N+1 (+1 since numbering is from 1). these are Qt-like objects, they are owned (memory) by the GUI parent etc
     bool commandsStarted = false;
-    std::shared_ptr<WorldSettings> world;
 
 public:
     TerminalPanel(std::shared_ptr<TerminalWindowSettings> settings, std::shared_ptr<WorldSettings> _world,
@@ -579,9 +742,12 @@ public:
         //commandsStarted = true;
         
         if (step == 1) {
-            // appendLog("Finding the first free localhost IP segment...");
-            this->m_settings->main_ip_seg = proj_count_ports::first_free_ipend_localhost(100,2000,true);
-            // appendLog("Found free localhost IP segment: " + std::to_string(free_ipend), 2);
+            Logger::log("Finding the first free localhost IP segment...");
+            int segm = proj_count_ports::first_free_ipend_localhost(100,2000,true);
+            this->m_settings->main_ip_seg = segm;
+            const std::string nodes_ip = (std::ostringstream()<<"127.0.0." << segm ).str();
+            Logger::log((std::ostringstream()<<"Found free localhost IP segment: " << nodes_ip).str());
+            world->set_ip_net(nodes_ip,0);
         }
         if (this->m_settings->main_ip_seg < 0) {
             error_gui("Error: Could not find free localhost IP segment. Cannot continue.");
@@ -721,7 +887,7 @@ public:
                     oss<<"--server-rpc-endpoint=ws://"<<use_node_rpc_host<<":"<<use_node_rpc_port; return oss.str(); }() );
 
                 args.push_back("--chain-id");
-                args.push_back(this->m_settings->chainid);
+                args.push_back(this->world->get_chainid());
                 //args.push_back( [&](){ std::ostringstream oss; oss<<"--chain-id" << ' ' << this->m_settings.chainid; return oss.str(); }() );
 
                 args.push_back("--rpc-http-endpoint");
@@ -833,6 +999,7 @@ public:
         tabWidget = new QTabWidget(this);
         mainLayout->addWidget(tabWidget);
 
+
         // Create and add startup panel to tab #1
         startupPanel = new StartupPanel(m_settings, world, fontSettings);
         tabWidget->addTab(startupPanel, "Startup");
@@ -852,6 +1019,8 @@ public:
 
         // Set terminal panel reference in startup panel
         startupPanel->setTerminalPanel(terminalPanel);
+
+        Logger::instance().attachPanel(startupPanel);
     }
 
 private slots:
@@ -1110,6 +1279,93 @@ public:
     const FontSettings& getFontSettings() const { return fontSettings; }
 };
 
+Logger & Logger::instance() {
+    static Logger obj; // the single object (safe init)
+    return obj;
+}
+
+void Logger::log(const QString &msg) {
+    Logger::instance().appendLog(msg);
+}
+void Logger::log(const std::string &msg) {
+    Logger::instance().appendLog(msg);
+}
+void Logger::log(const char *msg) {
+    Logger::instance().appendLog(std::string(msg));
+}
+
+// Implementation of Logger::appendLog (after LogPanel is defined)
+
+void Logger::appendLog(const std::string &msg) {
+    this->appendLog( QString::fromStdString(msg) );
+}
+
+void Logger::appendLog(const QString &msg) {
+    if (panelRef) {
+        // Queue into GUI thread
+        QPointer<StartupPanel> target = panelRef;
+        QMetaObject::invokeMethod(qApp, [target, msg]() {
+            if (target) {
+                target->appendLog(msg);
+            } else {
+                std::cerr << "[Warning] LogPanel no longer exists. " << "Message was: " << msg.toStdString() << std::endl;
+            }
+        }, Qt::QueuedConnection);
+    } else {
+        std::cerr << "[Warning] No panel attached to logger (can't draw). " << "Message was: " << msg.toStdString() << std::endl;
+    }
+}
+
+// Background worker that runs in std::thread
+class BgWorker {
+public:
+    BgWorker(Logger *logger) : logger(logger) {}
+
+    void start() {
+        workerThread = std::thread([this]() {
+            for (int i = 0; i < 500; ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                QString msg = QString("Message %1").arg(i);
+                // Safe: logger handles lifetime checks
+                Logger::log(msg);
+            }
+        });
+    }
+
+    void join() {
+        if (workerThread.joinable())
+            workerThread.join();
+    }
+
+private:
+    Logger *logger;
+    std::thread workerThread;
+};
+
+/*
+int main_test_logger(int argc, char *argv[]) {
+    QApplication app(argc, argv);
+
+    LogPanel panel;
+    panel.show();
+
+    Logger logger;
+    logger.attachPanel(&panel); // need the good panel here
+
+    BgWorker worker(&logger);
+    worker.start();
+
+    int ret = app.exec();
+
+    worker.join(); // ensure clean shutdown
+    return ret;
+}
+*/
+
+// #include "main.moc"
+
+
+
 int main(int argc, char *argv[]) {
 
     if (argc > 1) {
@@ -1187,9 +1443,10 @@ void StartupPanel::next_step_chainid() {
         {
             std::ifstream ifs(chainid_fn);
             std::string chainid;
-            std::getline(ifs, chainid);
-            this->m_settings->chainid = chainid;
-            appendLog("Got chainid=[" + chainid + "]", 2);
+            std::getline(ifs, chainid);            
+            appendLog("Got chainid=[" + chainid + "]", 2); // step - we found chainid
+            //this->m_settings->chainid = chainid;
+            this->world->set_chainid(chainid);
             //this->terminalPanel->start_commands(2);
             QTimer::singleShot(50, this, [this](){ this->terminalPanel->start_commands(2); } ); // TODO race conditions? check.
         }
