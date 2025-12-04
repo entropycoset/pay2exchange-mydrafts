@@ -8,7 +8,7 @@
 #include <ctime>
 #include <stdexcept>
 
-const char* g_server_name = "myapp";
+
 
 using boost::asio::local::datagram_protocol;
 
