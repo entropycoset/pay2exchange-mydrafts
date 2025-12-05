@@ -9,4 +9,6 @@ lib*/Makefile
 
 
 compile_commands.json
-CMakeLists.txt.user ecul_test lint_output/
+CMakeLists.txt.user
+ecul_test
+lint_output/
