@@ -35,6 +35,14 @@ namespace ecul {
 }
 
 
+struct backend_settings {
+	// this constexpr math, on integers (in std::chrono durations) gives identical result always, btw
+	static constexpr std::chrono::milliseconds timeout_pipeop_max_ms{800};
+	static constexpr std::chrono::milliseconds timeout_pipeop_warn_ms{300};
+	static_assert(   timeout_pipeop_max_ms > (timeout_pipeop_warn_ms  *2) , "The timeout max must be quite bigger than the warning value" );
+};
+
+
 enum class StdOutErrMode {
 		OutErrModeHide,			// Redirect stdout/stderr to /dev/null
 		OutErrModeCapture,	// Capture stdout/stderr via pipes
@@ -142,8 +150,8 @@ private:
 		std::string accumulated_stderr;
 
 		// Timeout configuration
-		std::chrono::seconds max_timeout{5};
-		std::chrono::milliseconds warn_timeout{2500};
+		std::chrono::milliseconds max_timeout{ backend_settings::timeout_pipeop_max_ms };
+		std::chrono::milliseconds warn_timeout{ backend_settings::timeout_pipeop_warn_ms };
 
 		// Helper lambda for timed pipe operations with timeout and warning
 		template<typename Operation>
@@ -155,10 +163,11 @@ private:
 				auto end_time = std::chrono::steady_clock::now();
 				auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 
+				double seconds = duration.count() / 1000.0;
 				if (duration >= warn_timeout) {
-						double seconds = duration.count() / 1000.0;
-						ecul_log_warn("operation took long " + operation_name + " - " + std::to_string(seconds) + " seconds");
+						ecul_log_warn("operation took too long " + operation_name + " - " + std::to_string(seconds) + " seconds");
 				}
+				ecul_log_info("operation took " + operation_name + " - " + std::to_string(seconds) + " seconds");
 
 				return result;
 		}
@@ -423,15 +432,9 @@ public:
 				// The my_pipe destructors will automatically close owned FDs
 		}
 
-		// Timeout configuration methods
-		void set_timeouts(int max_timeout_seconds) {
-				max_timeout = std::chrono::seconds(max_timeout_seconds);
-				warn_timeout = std::chrono::milliseconds(max_timeout_seconds * 500); // Half of max_timeout
-		}
-
-		void set_timeouts(int max_timeout_seconds, int warn_timeout_milliseconds) {
-				max_timeout = std::chrono::seconds(max_timeout_seconds);
-				warn_timeout = std::chrono::milliseconds(warn_timeout_milliseconds);
+		void set_timeouts(int max_timeout_ms, int warn_timeout_ms) {
+				max_timeout = std::chrono::milliseconds(max_timeout_ms);
+				warn_timeout = std::chrono::milliseconds(warn_timeout_ms);
 		}
 
 		void send_command(const std::string& command) {
@@ -708,11 +711,11 @@ public:
 				ecul_log_info("StdPipeController: Starting demo mode - get_dynamic_global_properties");
 
 				try {
-						set_timeouts(15);
+						//set_timeouts(15);
 
 						// Give cli_wallet some time to connect to RPC endpoint
 						ecul_log_info("StdPipeController: Waiting for cli_wallet to initialize and connect to RPC...");
-						std::this_thread::sleep_for(std::chrono::seconds(5));
+						//std::this_thread::sleep_for(std::chrono::seconds(5));
 
 						// Send get_dynamic_global_properties command
 						ecul_log_info("StdPipeController: Sending get_dynamic_global_properties command...");

@@ -427,6 +427,7 @@ template<typename ExceptionType>
 /// For normal errors that result in a throw - if such error occurs then do expression
 /// `throw ecul_erro_runtime(msg)` - it will log error, and you will throw it.
 #define ecul_erro_runtime(msg) ( ecul_log_erro(msg) , std::runtime_error(msg) )
+#define ecul_erro(msg) ecul_erro_runtime(msg)
 
 /// For normal errors that result in a throw - if such error occurs then do expression
 /// `throw ecul_erro_what(your_exception(msg...))` - where your_exception(...) forms any

@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 
 # Create static library for ECUL (EntropyCoset Utils Lib)
-add_library(libecul STATIC ecul.cpp)
+file(GLOB_RECURSE SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+add_library(libecul STATIC ${SRC_FILES})
+
 
 # Set target properties
 set_target_properties(libecul PROPERTIES
