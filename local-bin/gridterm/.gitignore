@@ -1,0 +1,13 @@
+.qt/
+.vscode/
+CMakeCache.txt
+CMakeFiles/
+GridTerm
+GridTerm_autogen/
+Makefile
+cmake_install.cmake
+compile_commands.json
+local-good-debug-testing/
+local-good-debug/
+out/
+run/
