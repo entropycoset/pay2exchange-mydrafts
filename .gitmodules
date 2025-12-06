@@ -1,0 +1,3 @@
+[submodule "examples/testipc/stdpipe/external/googletest"]
+	path = examples/testipc/stdpipe/external/googletest
+	url = https://github.com/google/googletest.git
