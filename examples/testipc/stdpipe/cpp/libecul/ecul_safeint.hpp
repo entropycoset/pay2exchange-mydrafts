@@ -1,0 +1,112 @@
+#pragma once
+
+#include <type_traits>
+
+
+#if defined(__GNUC__) || defined(__clang__)
+    #define ATTRIB_PURE __attribute__((pure))
+#else
+    #define ATTRIB_PURE
+#endif
+
+namespace ecul {
+
+template <typename A, typename B>
+bool equal_to(A a, B b) {
+    if constexpr (std::is_signed_v<A> && std::is_unsigned_v<B>) {
+        if (a < 0) return false; // negative signed cannot equal any unsigned
+        return static_cast<std::make_unsigned_t<A>>(a) == b;
+    } else if constexpr (std::is_unsigned_v<A> && std::is_signed_v<B>) {
+        if (b < 0) return false; // negative signed cannot equal any unsigned
+        return a == static_cast<std::make_unsigned_t<B>>(b);
+    } else {
+        // both signed or both unsigned
+        return a == b;
+    }
+}
+
+/*
+Absolutelly safe (see below) integral type, using just pure C/C++ (no libs) on all existing platforms.
+For C++14 (and § rules refer to that standard) should work with new ones too (C++23 at time of writing).
+It wraps an integral (built-in) type, which is also called the "value" of this object, "decays" to it (conversion operator), and provides operators that
+must handle errors.
+All operations where we are left-side (or only) operand, and the right-side (if any) is either another object of our class, or an simple-integer,
+meet one of following:
+1) consider our value (A), and value B of the other operand (if any). If the result of simply doing that operation on A,B (or just A if single-operand)
+would be imperfect (see below), then handle error (or compile time error with diagnostics).
+2) otherwise, the operation must return the correct result (integral value or true/false) that is same the rules of mathemathics.
+
+All of the checks interanlly must not cause any imperfect operations in any cases, for any combination of types of the operands and values of operands.
+
+@par supported actions:
+- construct from an integeral
+- convert to the integer of wrapped-type
+- entire family of addition/substration (along with negation) + += ++ - -= -- along with negation (-x), and the increment/decrement in both orders
+- entire family of eqiuity comparsions (== !=) and sorting comparsions (< > <= >=)
+
+@par handling-errors
+
+@par terms
+- imperfect calculation means that either:
+  - it would be an UB to have that expression/calculation
+  - or the result of operation is different from mathemathical definition (usually due to overflow/underflow)
+  - or if wrapping occurs (EVEN the legal wrapping of unsigned integrals §5 [expr]/4. Even though it is legal, still is not allowed)
+
+@par safe
+
+@par notation
+- remark (^) in entire this class - when we write examples on numerical values e.g. (-128..+127), (0..255) etc, this is on example of (un)signed char.
+
+*/
+
+template <typename TA>
+class safe_int {
+    static_assert( std::is_integral_v<TA> , "We can wrap only integral types");
+
+    private:
+        template <typename T> static constexpr bool is_signed  <T> = std::is_signed_v<T>;
+        template <typename T> static constexpr bool is_unsigned<T> = ! std::is_signed_v<T>;
+        template <typename T> type_unsigned<T> = std::make_unsigned_t<T>;
+        template <typename T> type_signed<T>   = std::make_unsigned_t<T>;
+
+        /// call this two only AFTER making sure the value will fit into the converted type.
+        template <typename T> constexpr static type_unsigned<T> unsafe_cast_to_unsigned(T x) ATTRIB_PURE { return static_cast<type_unsigned<T>>(x); }
+        template <typename T> constexpr static type_signed  <T> unsafe_cast_to_signed  (T x) ATTRIB_PURE { return static_cast<type_signed  <T>>(x); }
+
+    public:
+
+        template<typename TB>
+        bool operator==(TB b) {
+            auto & a = this.val;
+            if constexpr (is_signed<A> && is_unsigned<V>) {
+                if (a<0) return false; // A is negative while B can't be, so return
+                return unsafe_cast_to_unsigned(a) == b; // (^) A is (0..127) ---> casted into var 0..255, so always safe
+            }
+            else  constexpr (is_signed<A> && is_unsigned<V>) {
+            }
+            else return a == b; // same signedness,
+        }
+
+    private:
+        TA val;
+
+};
+
+/*
+
+*** ok to compare same-signedness 
+
+C++14 guarantees that comparing two built‑in integral types of the same signedness is always well‑defined and logically correct. When both operands are signed,
+or both are unsigned, the rules of integral promotion and the usual arithmetic conversions (§5.9 Relational operators) ensure that the narrower type is promoted
+to the wider type before the comparison. This means the comparison behaves exactly as expected, without surprises.
+
+The draft explicitly cautions that mixing signed and unsigned operands can lead to unexpected results. As §5.9 notes, if the operands differ in signedness, the
+signed operand may be converted to unsigned, which can produce counter‑intuitive outcomes (e.g. -1 < 1u evaluates to false).  Supporting Quotes (C++14 Draft
+N4140)
+
+		§5.9 Relational operators: “If the operands have different types, the usual arithmetic conversions are performed to bring them to a common type.”
+
+		§4.5 Integral promotions: “A prvalue of an integer type … whose integer conversion rank is less than that of int can be converted to a prvalue of type int
+		if int can represent all the values of the source type; otherwise, it can be converted to unsigned int.”
+
+*/
