@@ -8,5 +8,7 @@ ctrl-alt-K  toggle booKmark here
 ctrl-alt-right/left navigae to previous/next edited(cursor) place
 alt-o switch cpp/hpp header-main
 
+ctrl+shift+\
+
 
 
