@@ -1,6 +1,24 @@
 #pragma once
 
+/*
+
+Safe Intgers. 
+Licence: BSD 4-clause.
+
+Read comments/docs on the main class - ecul::safe_int. See end of file for background and correctness.
+
+Various information here and quotes might be copied (as fair-use)) from C++ standards ISO (and the draft) which may include documents such as:
+C++11 (ISO/IEC 14882:2011, draft in N3337)
+C++14 (ISO/IEC 14882:2014, draft in N4140)
+C++17 (ISO/IEC 14882:2017, draft in N4659)
+C++20 (ISO/IEC 14882:2020, draft in N4860)
+C++23 (ISO/IEC 14882:2023, draft in N4959)
+- All C++ standards released by the ISO/IEC JTC1/SC22/WG21 C++ Standards Committee.
+
+*/
+
 #include <type_traits>
+#include <limits>
 
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -64,37 +82,38 @@ class safe_int {
     static_assert( std::is_integral_v<TA> , "We can wrap only integral types");
 
     private:
-        template <typename T> static constexpr bool is_signed  <T> = std::is_signed_v<T>;
-        template <typename T> static constexpr bool is_unsigned<T> = ! std::is_signed_v<T>;
-        template <typename T> type_unsigned<T> = std::make_unsigned_t<T>;
-        template <typename T> type_signed<T>   = std::make_unsigned_t<T>;
+        template <typename T> static constexpr bool is_signed = std::is_signed_v<T>;
+        template <typename T> static constexpr bool is_unsigned = !std::is_signed_v<T>;
 
         /// call this two only AFTER making sure the value will fit into the converted type.
-        template <typename T> constexpr static type_unsigned<T> unsafe_cast_to_unsigned(T x) ATTRIB_PURE { return static_cast<type_unsigned<T>>(x); }
-        template <typename T> constexpr static type_signed  <T> unsafe_cast_to_signed  (T x) ATTRIB_PURE { return static_cast<type_signed  <T>>(x); }
+        template <typename T> constexpr static std::make_unsigned_t<T> unsafe_cast_to_unsigned(T x) ATTRIB_PURE { return static_cast<std::make_unsigned_t<T>>(x); }
+        template <typename T> constexpr static std::make_signed_t<T> unsafe_cast_to_signed(T x) ATTRIB_PURE { return static_cast<std::make_signed_t<T>>(x); }
 
     public:
 
-        template<typename TB>
-        bool operator==(TB b) {
-            auto & a = this.val;
-            if constexpr (is_signed<A> && is_unsigned<V>) {
+        template<typename TB> bool operator==(TB b) noexcept {
+            auto & a = this->val;
+            if constexpr (is_signed<TA> && is_unsigned<TB>) {
                 if (a<0) return false; // A is negative while B can't be, so return
                 return unsafe_cast_to_unsigned(a) == b; // (^) A is (0..127) ---> casted into var 0..255, so always safe
             }
-            else  constexpr (is_signed<A> && is_unsigned<V>) {
+            else if constexpr (is_unsigned<TA> && is_signed<TB>) {
+								if (b<0) return false; // B is negative while A can't be, so return
+								return unsafe_cast_to_unsigned(b) == a; // (^) B is (0..127) ---> casted into var 0..255, so always safe
             }
-            else return a == b; // same signedness,
+            else return a == b; // same signedness, ok - [compare same-signedness]
         }
 
     private:
         TA val;
 
-};
+}; // class
+
+} // namespace
 
 /*
 
-*** ok to compare same-signedness 
+*** [compare same-signedness]
 
 C++14 guarantees that comparing two built‑in integral types of the same signedness is always well‑defined and logically correct. When both operands are signed,
 or both are unsigned, the rules of integral promotion and the usual arithmetic conversions (§5.9 Relational operators) ensure that the narrower type is promoted

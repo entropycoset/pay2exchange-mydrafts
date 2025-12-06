@@ -1,4 +1,3 @@
-#include "libecul/ecul.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -10,6 +9,10 @@
 #include <cstddef>
 #include <mutex>
 #include <thread>
+
+
+#include "libecul/ecul.hpp"
+#include "libecul/ecul_safeint.hpp"
 
 // Override the project name function for this test
 namespace ecul {
