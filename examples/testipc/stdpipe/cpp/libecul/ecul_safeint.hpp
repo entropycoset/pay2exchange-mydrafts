@@ -2,7 +2,7 @@
 
 /*
 
-Safe Intgers. 
+Safe Integers.
 Licence: BSD 4-clause.
 
 Read comments/docs on the main class - ecul::safe_int. See end of file for background and correctness.
@@ -44,7 +44,7 @@ bool equal_to(A a, B b) {
 }
 
 /*
-Absolutelly safe (see below) integral type, using just pure C/C++ (no libs) on all existing platforms.
+Absolutely safe (see below) integral type, using just pure C/C++ (no libs) on all existing platforms.
 For C++14 (and § rules refer to that standard) should work with new ones too (C++23 at time of writing).
 It wraps an integral (built-in) type, which is also called the "value" of this object, "decays" to it (conversion operator), and provides operators that
 must handle errors.
@@ -54,13 +54,13 @@ meet one of following:
 would be imperfect (see below), then handle error (or compile time error with diagnostics).
 2) otherwise, the operation must return the correct result (integral value or true/false) that is same the rules of mathemathics.
 
-All of the checks interanlly must not cause any imperfect operations in any cases, for any combination of types of the operands and values of operands.
+All of the checks internally must not cause any imperfect operations in any cases, for any combination of types of the operands and values of operands.
 
 @par supported actions:
-- construct from an integeral
+- construct from an integral
 - convert to the integer of wrapped-type
-- entire family of addition/substration (along with negation) + += ++ - -= -- along with negation (-x), and the increment/decrement in both orders
-- entire family of eqiuity comparsions (== !=) and sorting comparsions (< > <= >=)
+- entire family of addition/subtraction (along with negation) + += ++ - -= -- along with negation (-x), and the increment/decrement in both orders
+- entire family of equality comparisons (== !=) and sorting comparisons (< > <= >=)
 
 @par handling-errors
 
