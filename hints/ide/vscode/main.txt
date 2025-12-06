@@ -1,10 +1,16 @@
-
-
-
 keybinds
-
 
 workbench.action.navigateBack - set to - alt+left
 workbench.action.navigateForward set to alt+right
+
+
+cmake.launchTarget
+set to:
+F9
+
+show same keybinding
+toggle breakpoint - remove
+or set to ctrl-alt-D
+
 
 
