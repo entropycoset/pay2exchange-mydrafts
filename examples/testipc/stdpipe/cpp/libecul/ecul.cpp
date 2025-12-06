@@ -398,7 +398,7 @@ critical_do_not_catch_exception_stop create_stop_exception(const std::string& me
 bool MemBallast::emergency_free_tiny_or_abort(MemBallast *tiny_ballast) noexcept {
     if (!tiny_ballast) {
         log_err() << "I don't have tiny-ballast to use here (null) - will abort now!" << std::endl;
-        std::abort();
+        std::abort(); // UNSAFE_LINTER_IGNORE_ABORT_CALL
     }
     tiny_ballast->emergency_free();
 
@@ -442,7 +442,7 @@ bool MemBallast::safe_rearm_or_abort() noexcept {
                   << "need " << this->buffMinimal_ << " or better " << this->bufferCount_
                   << "but got just " << current << "."
                   << " - will abort now!" << std::flush;
-        std::abort();
+        std::abort(); // UNSAFE_LINTER_IGNORE_ABORT_CALL
     }
 }
 
@@ -515,7 +515,7 @@ MemBallastComplete::MemBallastComplete() {
     }
     catch (const std::runtime_error & exc) {
         std::cerr << "ERROR: low memory? Failed to even init the MemBallastComplete - will abort now!" << std::endl;
-        std::abort();
+        std::abort(); // UNSAFE_LINTER_IGNORE_ABORT_CALL
     }
     bool rearm_ok = [this]() -> bool {
         if (! m_tiny->safe_rearm_or_abort()) return false;
@@ -526,7 +526,7 @@ MemBallastComplete::MemBallastComplete() {
         m_normal->emergency_free();
         // a bit dead code it probably aborted above in this case _or_abort()
         std::cerr << "ERROR: low memory? Failed to arm the MemBallastComplete - on ctor - will abort now!" << std::endl;
-        std::abort();
+        std::abort(); // UNSAFE_LINTER_IGNORE_ABORT_CALL
     }
 }
 
@@ -558,7 +558,7 @@ void MemBallastComplete::we_are_safe() {
     if (!rearm_ok) {
         m_normal->emergency_free();
         std::cerr << "ERROR: low memory? Failed to arm the MemBallastComplete - in runtime - will abort now!" << std::endl;
-        std::abort();
+        std::abort(); // UNSAFE_LINTER_IGNORE_ABORT_CALL
     }
 }
 
