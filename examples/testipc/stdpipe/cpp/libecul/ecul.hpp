@@ -1,3 +1,4 @@
+#pragma once
 #ifndef ECUL_HPP
 #define ECUL_HPP
 
@@ -12,11 +13,62 @@
 #include <random>
 #include <sstream>
 
+#include <string>
+#if defined(__GNUC__) || defined(__clang__)
+    #include <cxxabi.h>
+    #include <memory>
+    #include <cstdlib>
+#endif
+
 // ODR fallback for project name detection - user should define this in their code
 // If not defined, get_project_name() will return "unknown"
 // TODO move this^
 
 namespace ecul {
+
+/// helper for e.g. static_assert( always_false<T>::value ) inside some code that is template<typename T>
+template <class... T> struct always_false : std::false_type {};
+
+/// helper for e.g. static_assert( always_false_v<T> ) inside some code that is template<typename T>
+template <class... T> constexpr bool always_false_v = always_false<T>::value;
+
+namespace nice_type {
+
+    // Core demangle helper
+    inline std::string demangle(const char* mangled) {
+    #if defined(__GNUC__) || defined(__clang__)
+        int status = 0;
+        std::unique_ptr<char, void(*)(void*)> demangled(
+            abi::__cxa_demangle(mangled, nullptr, nullptr, &status),
+            std::free
+        );
+        return (status == 0 && demangled) ? demangled.get() : mangled;
+    #else
+        // On MSVC and other compilers, typeid().name() is usually readable
+        return mangled;
+    #endif
+    }
+
+    // Overload: from std::type_info
+    inline std::string nice_var(const std::type_info& ti) {
+        return demangle(ti.name());
+    }
+
+    // Overload: templated, ignores value
+    template <typename T>
+    inline std::string nice_var(const T&) {
+        return demangle(typeid(T).name());
+    }
+
+    // Overload: templated, no value needed
+    template <typename T>
+    inline std::string nice_var() {
+        return demangle(typeid(T).name());
+    }
+
+} // namespace nice_type
+
+
 
 /// @example someprint( mkstr() << a << 123 << "foo" << std::setw(10) << c );
 class mkstr final {

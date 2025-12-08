@@ -25,6 +25,7 @@
 #include <stdexcept>
 
 #include "ecul.hpp" // basic errors/logging/etc
+#include "ecul_safeint.hpp"
 
 namespace ecul {
 namespace socket { 
@@ -32,9 +33,9 @@ namespace socket {
 // On given SOCKET (fd) set the given timeout, to be used on blocking operations
 void set_socket_send_timeout(
 #if defined(_WIN32)
-  SOCKET fd,
+  ecul::safe_int<SOCKET> fd,
 #else
-  int fd,
+  ecul::safe_int<int> fd,
 #endif
   std::chrono::milliseconds timeout)
 ;
@@ -60,14 +61,14 @@ void set_socket_send_timeout(
 /// Defensive coding ensures no invalid fd, no zero chunk size, and no overflow.
 void write_with_timeout_chunks(
 #if defined(_WIN32)
-  SOCKET fd,
+  ecul::safe_int<SOCKET> fd,
 #else
-  int fd,
+  ecul::safe_int<int> fd,
 #endif
   const std::string &data,
   std::chrono::steady_clock::time_point timeout_since,
   std::chrono::milliseconds timeout_max_ms,
-  size_t chunk_size);
+  ecul::safe_int<size_t> chunk_size);
 
 
 } // namespace socket

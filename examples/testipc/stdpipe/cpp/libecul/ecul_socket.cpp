@@ -7,9 +7,9 @@ namespace socket {
 // On given SOCKET (fd) set the given timeout, to be used on blocking operations
 void set_socket_send_timeout(
 #if defined(_WIN32)
-  SOCKET fd,
+  ecul::safe_int<SOCKET> fd,
 #else
-  int fd,
+  ecul::safe_int<int> fd,
 #endif
   std::chrono::milliseconds timeout)
 {
@@ -20,7 +20,7 @@ void set_socket_send_timeout(
     fd < 0
 #endif
   ) {
-    throw ecul_erro(mkstr() << "Invalid socket fd=" << fd);
+    throw ecul_erro(mkstr() << "Invalid socket fd=" << fd.val());
   }
 
   auto ms = timeout.count();
@@ -40,13 +40,17 @@ void set_socket_send_timeout(
     throw ecul_erro(mkstr() << "setsockopt(SO_SNDTIMEO) failed, WSAError=" << err);
   }
 #else
+	int seconds_reason=3600; // limit to reasonable amount
+  if (ms / 1000 > seconds_reason) {
+    throw ecul_erro(mkstr() << "Timeout seconds is very high, for timeval: " << ms);
+  }	
   if (ms / 1000 > std::numeric_limits<long>::max()) {
-    throw ecul_erro(mkstr() << "Timeout seconds overflow for timeval: " << ms);
+    throw ecul_erro(mkstr() << "Timeout seconds overflow, for timeval: " << ms);
   }
   struct timeval tv;
   tv.tv_sec = static_cast<long>(ms / 1000);
   tv.tv_usec = static_cast<long>((ms % 1000) * 1000);
-  if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+  if (setsockopt(fd.val(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
     const auto errno_save = errno;
     throw ecul_erro(mkstr() << "setsockopt(SO_SNDTIMEO) failed, errno=" << errno_save);
   }
@@ -69,14 +73,14 @@ double now_elapsed( std::chrono::steady_clock::time_point timeout_since , bool &
 // Main function: write with timeout in chunks
 void write_with_timeout_chunks(
 #if defined(_WIN32)
-  SOCKET fd,
+  ecul::safe_int<SOCKET> fd,
 #else
-  int fd,
+  ecul::safe_int<int> fd,
 #endif
   const std::string &data,
   std::chrono::steady_clock::time_point timeout_since,
   std::chrono::milliseconds timeout_max_ms,
-  size_t chunk_size)
+  ecul::safe_int<size_t> chunk_size)
 {
   if (
 #if defined(_WIN32)
@@ -85,7 +89,7 @@ void write_with_timeout_chunks(
     fd < 0
 #endif
   ) {
-    throw ecul_erro(mkstr() << "Invalid socket fd=" << fd);
+    throw ecul_erro(mkstr() << "Invalid socket fd=" << fd.val());
   }
   if (chunk_size == 0) throw ecul_erro(mkstr() << "Chunk size must be > 0");
   if (chunk_size >= std::numeric_limits<ssize_t>::max()/2) throw ecul_erro(mkstr() << "Chunk size is too large (with ssize_t)"); // just to stay extra away from overflow related problems
@@ -94,29 +98,29 @@ void write_with_timeout_chunks(
 
   auto fmt_secs = [](double secs) { return ( std::ostringstream() << std::fixed << std::setprecision(4) << secs ).str(); };
 
-  size_t total_written = 0;
-  size_t iterations = 0;
+  ecul::safe_int<size_t> total_written = 0;
+  ecul::safe_int<size_t> iterations = 0;
 
   while (total_written < data.size()) {
-    size_t to_write = std::min(chunk_size, data.size() - total_written);
+    ecul::safe_int<size_t> to_write = 1; // TODO TODONOW XXXX TODO XXXX    std::min(chunk_size, data.size() - total_written);
 
 #if defined(_WIN32)
     int n = ::send(fd, data.data() + total_written,
                    static_cast<int>(to_write), 0);
 #else
-    ssize_t n = ::write(fd, data.data() + total_written, to_write);
+    ecul::safe_int<ssize_t> n = ::write(fd.val(), data.data() + total_written.val(), to_write.val());
 #endif
 
     if (n > 0) {
-      total_written += static_cast<size_t>(n);
-      iterations++;
+      total_written += n; // static_cast<size_t>(n);
+      iterations = iterations + 1;
     } else if (n == 0) {
       double elapsed_sec = now_elapsed(timeout_since, warn_since);
       throw ecul_erro(mkstr() << "Socket closed unexpectedly (written zero, n="<<n<<") after writing "
         << total_written << " bytes, elapsed=" << fmt_secs(elapsed_sec) << "s");
     } else {
 #if defined(_WIN32)
-      int err = WSAGetLastError();
+      ecul::safe_int<int> err = WSAGetLastError();
       if (err == WSAEWOULDBLOCK || err == WSAETIMEDOUT) {
         // Timeout on this call, no bytes written
         std::this_thread::sleep_for(std::chrono::milliseconds(50));

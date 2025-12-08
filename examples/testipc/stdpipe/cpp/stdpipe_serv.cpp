@@ -30,7 +30,7 @@ TInt parse_strict_integer(const std::string& input) {
 		static_assert(std::is_integral<TInt>::value, "TInt must be an integral type");
 
 		if (input.empty()) {
-				ecul_stop("Empty string");
+				throw ecul_stop("Empty string");
 		}
 
 		char* end = nullptr;
@@ -43,7 +43,7 @@ TInt parse_strict_integer(const std::string& input) {
 				std::string normalized = oss.str();
 
 				if (input != normalized && input != ("+" + normalized)) {
-						ecul_stop("Not normal integer string (junk besides the integer)");
+						throw ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				return value;
 		};
@@ -56,10 +56,10 @@ TInt parse_strict_integer(const std::string& input) {
 				unsigned long long raw = std::strtoull(input.c_str(), &end, 10);
 
 				if (*end != '\0') {
-						ecul_stop("Not normal integer string (junk besides the integer)");
+						throw ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				if (errno == ERANGE || raw > std::numeric_limits<TInt>::max()) {
-						ecul_stop("Value out of range for unsigned type");
+						throw ecul_stop("Value out of range for unsigned type");
 				}
 
 				return normalize_and_compare(static_cast<TInt>(raw));
@@ -74,10 +74,10 @@ TInt parse_strict_integer(const std::string& input) {
 				long long raw = std::strtoll(input.c_str(), &end, 10);
 
 				if (*end != '\0') {
-						ecul_stop("Not normal integer string (junk besides the integer)");
+						throw ecul_stop("Not normal integer string (junk besides the integer)");
 				}
 				if (errno == ERANGE || raw < std::numeric_limits<TInt>::min() || raw > std::numeric_limits<TInt>::max()) {
-						ecul_stop("Value out of range for signed type");
+						throw ecul_stop("Value out of range for signed type");
 				}
 
 				return normalize_and_compare(static_cast<TInt>(raw));
@@ -106,12 +106,12 @@ public:
 				try {
 						cmd_in_file = std::make_unique<fd_stream_in>(cmd_in_fd, boost::iostreams::never_close_handle);
 						if (!cmd_in_file->is_open()) {
-								ecul_stop("Failed to open command input pipe (FD " + std::to_string(cmd_in_fd) + ")");
+								throw ecul_stop("Failed to open command input pipe (FD " + std::to_string(cmd_in_fd) + ")");
 						}
 
 						cmd_out_file = std::make_unique<fd_stream_out>(cmd_out_fd, boost::iostreams::never_close_handle);
 						if (!cmd_out_file->is_open()) {
-								ecul_stop("Failed to open command output pipe (FD " + std::to_string(cmd_out_fd) + ")");
+								throw ecul_stop("Failed to open command output pipe (FD " + std::to_string(cmd_out_fd) + ")");
 						}
 				} catch (const std::exception& e) {
 						ecul_log_erro("Error creating boost::iostreams from FDs: " + std::string(e.what()));
@@ -129,7 +129,7 @@ public:
 
 				cmd_out_file->write(formatted_reply.c_str(), formatted_reply.length());
 				if (cmd_out_file->fail()) {
-						ecul_stop("Failed to write reply to command output pipe");
+						throw ecul_stop("Failed to write reply to command output pipe");
 				}
 				cmd_out_file->flush();
 		}
@@ -249,7 +249,7 @@ int main(int argc, char* argv[]) {
 				std::vector<std::string> argvect;
 				for (int i = 0; i < argc; ++i) {
 						if (argv[i] == nullptr) {
-								ecul_stop("Null argv element at index " + std::to_string(i));
+								throw ecul_stop("Null argv element at index " + std::to_string(i));
 						}
 						argvect.push_back(std::string(argv[i]));
 				}
@@ -272,7 +272,7 @@ int main(int argc, char* argv[]) {
 				ecul_log_info("Will talk CMD on: cmd-in fd " + std::to_string(cmd_in_fd) + ", cmd-out fd " + std::to_string(cmd_out_fd));
 
 				if (cmd_in_fd < 0 || cmd_out_fd < 0) {
-						ecul_stop("Invalid file descriptor numbers");
+						throw ecul_stop("Invalid file descriptor numbers");
 				}
 
 				StdPipeServer server(cmd_in_fd, cmd_out_fd);

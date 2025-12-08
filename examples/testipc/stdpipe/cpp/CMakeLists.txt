@@ -13,9 +13,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Incremental Linting Configuration
 # =====================================================
 
+# Option to enable/disable linters
+option(ENABLE_LINTERS "Enable linting tools (clang-tidy, cppcheck)" OFF)
+
 # Option to enable incremental linting (per-file .lint files)
 option(ENABLE_INCREMENTAL_LINTING "Use incremental .lint files instead of monolithic linting" ON)
 option(LINT_SHOW_SUMMARY "Show aggregated lint summary after incremental linting" ON)
+
+# Option to enable sanitizers
+option(ENABLE_SANITIZERS "Enable UndefinedBehavior sanitizer (GCC/Clang)" FALSE)
 
 if(ENABLE_INCREMENTAL_LINTING)
     message(STATUS "✅ Incremental linting enabled - will create .lint files per source file")
@@ -29,9 +35,50 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW) # I know FindBoost is gone, I’m fine with using Boost’s own config
 endif()
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ferror-limit=1")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ferror-limit=1")
+
+# =====================================================
+# Sanitizer Configuration
+# =====================================================
+
+if(ENABLE_SANITIZERS)
+    message(STATUS "✅ Sanitizers enabled - adding UndefinedBehavior sanitizer")
+    
+    # Check if we're using GCC or Clang
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # Add UndefinedBehavior sanitizer flags
+        set(SANITIZER_FLAGS "-fsanitize=undefined -fno-sanitize-recover=all")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZER_FLAGS}")
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SANITIZER_FLAGS}")
+        
+        message(STATUS "   Compiler: ${CMAKE_CXX_COMPILER_ID}")
+        message(STATUS "   Flags: ${SANITIZER_FLAGS}")
+    else()
+        message(WARNING "⚠️  Sanitizers requested but compiler ${CMAKE_CXX_COMPILER_ID} not supported (need GCC or Clang)")
+    endif()
+else()
+    message(STATUS "📝 Sanitizers disabled")
+endif()
+
 # =====================================================
 # Linter Detection and Configuration
 # =====================================================
+
+if(NOT ENABLE_LINTERS)
+    message(STATUS "📝 Linters disabled (ENABLE_LINTERS=OFF)")
+    
+    # Create a dummy lint target
+    add_custom_target(lint
+        COMMAND ${CMAKE_COMMAND} -E echo "⚠️  Linters are disabled. Enable with -DENABLE_LINTERS=ON"
+        COMMENT "⚠️  Linters disabled"
+    )
+    
+    # Set empty LINT_DEPENDENCIES for build targets
+    set(LINT_DEPENDENCIES "")
+else()
+    message(STATUS "✅ Linters enabled (ENABLE_LINTERS=ON)")
 
 # Variables to track linter availability and warnings
 set(LINTER_WARNINGS "")
@@ -122,7 +169,7 @@ if(CLANG_TIDY_AVAILABLE AND NOT ENABLE_INCREMENTAL_LINTING)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "🔍 Running clang-tidy using compilation database"
     )
-    
+
     # Make clang-tidy depend on having built at least one target to ensure compile_commands.json exists
     add_dependencies(lint_clang_tidy stdpipe_back)
 endif()
@@ -183,16 +230,16 @@ if(NOT ENABLE_INCREMENTAL_LINTING)
     if(CPPCHECK_AVAILABLE)
         list(APPEND LINT_DEPENDENCIES lint_cppcheck)
     endif()
-    
+
     if(LINT_DEPENDENCIES)
         add_custom_target(lint
             DEPENDS ${LINT_DEPENDENCIES}
             COMMENT "🔍 Running all available linters (legacy mode)"
         )
-        
+
         # Make lint target PHONY (always run)
         set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
-        
+
         if(CLANG_TIDY_AVAILABLE)
             set_target_properties(lint_clang_tidy PROPERTIES EXCLUDE_FROM_ALL FALSE)
         endif()
@@ -200,7 +247,7 @@ if(NOT ENABLE_INCREMENTAL_LINTING)
             set_target_properties(lint_cppcheck PROPERTIES EXCLUDE_FROM_ALL FALSE)
         endif()
         set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
-        
+
         message(STATUS "✅ Legacy lint target created with: ${LINT_DEPENDENCIES}")
     else()
         # Create a dummy lint target that shows warnings
@@ -221,23 +268,23 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/GenerateLintSummary.cmake
         COMMENT "📊 Generating lint summary report"
     )
-    
+
     # Create lintall target to show all lint file contents
     add_custom_target(lintall
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/ShowAllLintResults.cmake
         COMMENT "📋 Displaying all lint results with file headers"
     )
-    
+
     # Simple incremental linting - create individual targets for each .cpp file
     if(EXISTS "${CMAKE_BINARY_DIR}/compile_commands.json")
         message(STATUS "🚀 Creating incremental lint targets for .cpp files")
-        
+
         set(INDIVIDUAL_LINT_TARGETS "")
-        
+
         # Create individual .lint files - clang-tidy on ALL files, cppcheck on .cpp only
         set(ALL_CLANG_TIDY_LINT_FILES "")
         set(ALL_CPPCHECK_LINT_FILES "")
-        
+
         # Process all source files for clang-tidy (includes .cpp, .hpp, .h)
         if(CLANG_TIDY_AVAILABLE)
             foreach(source_file ${ALL_SOURCE_FILES})
@@ -246,13 +293,13 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 if(rel_source_file MATCHES "^\\.\\./")
                     continue()
                 endif()
-                
+
                 # Create lint file paths in build directory (include extension to avoid conflicts)
                 string(REPLACE "/" "_" safe_name "${rel_source_file}")
                 string(REPLACE "." "_" safe_name "${safe_name}")
-                
+
                 set(clang_tidy_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.clang-tidy.lint")
-                
+
                 add_custom_command(
                     OUTPUT "${clang_tidy_lint_file}"
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lint_output"
@@ -275,7 +322,7 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 list(APPEND ALL_CLANG_TIDY_LINT_FILES "${clang_tidy_lint_file}")
             endforeach()
         endif()
-        
+
         # Process only .cpp files for cppcheck
         if(CPPCHECK_AVAILABLE)
             foreach(cpp_file ${CPP_SOURCE_FILES})
@@ -284,13 +331,13 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 if(rel_cpp_file MATCHES "^\\.\\./")
                     continue()
                 endif()
-                
+
                 # Create lint file paths in build directory
                 string(REPLACE "/" "_" safe_name "${rel_cpp_file}")
                 string(REPLACE "." "_" safe_name "${safe_name}")
-                
+
                 set(cppcheck_lint_file "${CMAKE_BINARY_DIR}/lint_output/${safe_name}.cppcheck.lint")
-                
+
                 add_custom_command(
                     OUTPUT "${cppcheck_lint_file}"
                     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lint_output"
@@ -321,7 +368,7 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 list(APPEND ALL_CPPCHECK_LINT_FILES "${cppcheck_lint_file}")
             endforeach()
         endif()
-        
+
         # Create aggregation targets that depend on .lint files
         if(CLANG_TIDY_AVAILABLE AND ALL_CLANG_TIDY_LINT_FILES)
             list(LENGTH ALL_CLANG_TIDY_LINT_FILES num_clang_tidy_targets)
@@ -330,7 +377,7 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 COMMENT "🔍 Running incremental clang-tidy on changed files (${num_clang_tidy_targets} files)"
             )
         endif()
-        
+
         if(CPPCHECK_AVAILABLE AND ALL_CPPCHECK_LINT_FILES)
             list(LENGTH ALL_CPPCHECK_LINT_FILES num_cppcheck_targets)
             add_custom_target(lint_cppcheck_incremental
@@ -338,7 +385,7 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
                 COMMENT "🔍 Running incremental cppcheck on changed files (${num_cppcheck_targets} files)"
             )
         endif()
-        
+
         # Create main lint target
         set(MAIN_LINT_DEPS "")
         list(APPEND MAIN_LINT_DEPS lint_security)
@@ -351,15 +398,15 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         if(LINT_SHOW_SUMMARY)
             list(APPEND MAIN_LINT_DEPS lint_summary)
         endif()
-        
+
         add_custom_target(lint
             DEPENDS ${MAIN_LINT_DEPS}
             COMMENT "🔍 Running incremental linting system"
         )
-        
+
         set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
         set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
-        
+
         list(LENGTH INDIVIDUAL_LINT_TARGETS num_targets)
         # Count targets for status message
         set(num_clang_tidy_files 0)
@@ -370,7 +417,7 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         if(ALL_CPPCHECK_LINT_FILES)
             list(LENGTH ALL_CPPCHECK_LINT_FILES num_cppcheck_files)
         endif()
-        
+
         message(STATUS "✅ Incremental linting system enabled")
         message(STATUS "   📊 clang-tidy: ${num_clang_tidy_files} files")
         message(STATUS "   📊 cppcheck: ${num_cppcheck_files} files")
@@ -379,10 +426,10 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         message(STATUS "   🚀 make -j$(nproc) lint        # Use all CPU cores")
         message(STATUS "   🚀 ninja lint                  # Ninja auto-detects cores")
         message(STATUS "   📄 Individual: make path/file.cpp.clang-tidy.lint")
-        
+
     else()
         message(STATUS "⚠️  compile_commands.json not found - using legacy lint targets")
-        
+
         # Fallback to legacy approach
         set(FALLBACK_LINT_DEPS "")
         list(APPEND FALLBACK_LINT_DEPS lint_security)
@@ -392,16 +439,18 @@ if(ENABLE_INCREMENTAL_LINTING AND (CLANG_TIDY_AVAILABLE OR CPPCHECK_AVAILABLE))
         if(CPPCHECK_AVAILABLE)
             list(APPEND FALLBACK_LINT_DEPS lint_cppcheck)
         endif()
-        
+
         add_custom_target(lint
             DEPENDS ${FALLBACK_LINT_DEPS}
             COMMENT "🔍 Running legacy linting (reconfigure after build for incremental)"
         )
-        
+
         set_target_properties(lint PROPERTIES EXCLUDE_FROM_ALL FALSE)
         set_target_properties(lint_security PROPERTIES EXCLUDE_FROM_ALL FALSE)
     endif()
 endif()
+
+endif() # End of if(NOT ENABLE_LINTERS) ... else() block
 
 # =====================================================
 # Prepare install-build dir section
@@ -430,7 +479,7 @@ else()
 		message(FATAL_ERROR "❌ Failed to create tools directory: ${P2E_TOOLS_DIR}")
 endif()
 
-# Find Boost
+# Find Boost (including multiprecision for tests - header-only)
 find_package(Boost REQUIRED COMPONENTS system filesystem iostreams program_options)
 
 # Find nlohmann/json
@@ -441,6 +490,32 @@ add_subdirectory(libvalidcolor)
 add_subdirectory(libcmdformat)
 add_subdirectory(libstdpipeutil)
 add_subdirectory(libecul)
+
+# =====================================================
+# Google Test Integration
+# =====================================================
+
+# Add GoogleTest
+add_subdirectory(external/googletest)
+
+# Enable testing
+enable_testing()
+
+# Add test executable
+add_executable(ecul_safeint_test tests/ecul/ecul_safeint.cpp)
+
+# Link GoogleTest and ecul library to test
+target_link_libraries(ecul_safeint_test gtest gtest_main libecul)
+
+# Add include directories for the test (including GoogleTest headers)
+target_include_directories(ecul_safeint_test PRIVATE
+    libecul
+    ${CMAKE_SOURCE_DIR}/external/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/external/googletest/googlemock/include
+)
+
+# Add test to CTest
+add_test(NAME ecul_safeint_test COMMAND ecul_safeint_test)
 
 # Create executables
 add_executable(stdpipe_back stdpipe_back.cpp)
@@ -649,7 +724,7 @@ if(LINT_DEPENDENCIES)
 	)
 else()
 	add_custom_command(TARGET after_build POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E echo "⚠️  Build complete - executables installed (linters missing)"
+		COMMAND ${CMAKE_COMMAND} -E echo "⚠️  Build complete - executables installed - linters missing"
 		COMMAND ${CMAKE_COMMAND} -E echo "   Installed to: ${P2E_TOOLS_DIR}"
 		COMMAND ${CMAKE_COMMAND} -E echo "   Install clang-tidy and cppcheck for code quality checks"
 		COMMENT "Build success without linting"
